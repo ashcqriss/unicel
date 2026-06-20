@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "econsole"
+version = "0.1.0"
+description = "E-Console: a terminal-first, single-layer-pane desktop shell with UNISHELL"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "E-Console OS contributors" }]
+keywords = ["tui", "shell", "curses", "eink", "ar", "debian", "terminal"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console :: Curses",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Shells",
+]
+# The runtime core has zero third-party dependencies (stdlib curses only).
+dependencies = []
+
+[project.optional-dependencies]
+# Inline image previews in the Image Viewer.
+image = ["pillow>=9"]
+# Developer tooling.
+dev = ["pytest>=7"]
+
+[project.scripts]
+econsole = "econsole.app:main"
+
+[project.urls]
+Homepage = "https://github.com/ashcqriss/unicel"
+
+[tool.setuptools]
+packages = ["econsole", "econsole.panes", "econsole.apps", "econsole.commands"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

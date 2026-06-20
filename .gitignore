@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# E-Console local state (should live under XDG dirs, never in-repo)
+*.econsole-state/
+
+# Build artifacts for OS images
+images/*.img
+images/*.iso
+*.img.xz

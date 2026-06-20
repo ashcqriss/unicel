@@ -1,0 +1,37 @@
+# Boot directly into E-Console on tty1 (roadmap step 2).
+#
+# Install:
+#   cp packaging/econsole-session.sh /usr/local/bin/econsole-session
+#   chmod +x /usr/local/bin/econsole-session
+#   cp packaging/econsole.service /etc/systemd/system/
+#   systemctl disable getty@tty1        # take over tty1
+#   systemctl enable econsole.service
+#
+# This runs the session as the unprivileged 'user' account on the console.
+# Compute/firewall/system services stay in the background; this is just the UI.
+
+[Unit]
+Description=E-Console terminal-first shell
+After=systemd-user-sessions.service plymouth-quit-wait.service
+Conflicts=getty@tty1.service
+Wants=network-online.target
+
+[Service]
+Type=idle
+User=user
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal
+ExecStart=/usr/local/bin/econsole-session
+Restart=always
+RestartSec=2
+# Keep the UI process lightweight and contained.
+Nice=0
+WorkingDirectory=/home/user
+
+[Install]
+WantedBy=multi-user.target
