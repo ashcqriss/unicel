@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E-Console OS — UNISHELL preview</title>
+<meta name="description" content="Interactive browser preview of E-Console OS: a terminal-first desktop shell with UNISHELL, single-layer panes, E-Ink/AR profiles and built-in apps.">
+<style>
+  :root{
+    /* theme variables are injected at runtime by applyTheme() */
+    --bg:#000; --fg:#eee; --dim:#888; --accent:#34e2e2; --accent2:#ad7fa8;
+    --border:#555; --border-focus:#34e2e2; --status-fg:#fff; --status-bg:#3465a4;
+    --tab-fg:#888; --tab-bg:#000; --tab-active-fg:#000; --tab-active-bg:#34e2e2;
+    --sel-fg:#000; --sel-bg:#34e2e2; --ok:#8ae234; --warn:#fce94f; --error:#ef2929;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:#0a0c10; color:#c7ccd4; font-family:var(--mono);
+    font-size:14px; line-height:1.45; padding:18px;
+    display:flex; flex-direction:column; align-items:center; gap:12px;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:#7aa6ff}
+  .caption{max-width:1000px;width:100%}
+  .caption h1{font-size:16px;margin:0 0 4px;color:#e8edf5;letter-spacing:.5px}
+  .caption p{margin:0;color:#8b93a3;font-size:12.5px}
+  .caption code{background:#161a22;border:1px solid #232936;border-radius:4px;padding:1px 5px;color:#cdd5e2}
+
+  /* device bezel */
+  .device{
+    width:1000px; max-width:100%;
+    background:linear-gradient(#1a1d24,#11141a);
+    border:1px solid #2a2f3a; border-radius:14px; padding:12px;
+    box-shadow:0 24px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .device-bar{display:flex;align-items:center;gap:8px;padding:2px 4px 10px}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .device-bar .mdl{margin-left:auto;color:#5d6678;font-size:11px;letter-spacing:1px}
+
+  /* the screen */
+  .screen{
+    background:var(--bg); color:var(--fg);
+    height:560px; border-radius:8px; overflow:hidden;
+    display:flex; flex-direction:column;
+    border:1px solid #000;
+    position:relative;
+  }
+  .screen.profile-eink{ filter:grayscale(1) contrast(1.15); }
+  .screen.profile-eink .pane{ border-width:2px; }
+  .screen.profile-eink .scanlines{ display:none; }
+
+  /* tab strip */
+  .tabstrip{
+    display:flex; align-items:stretch; gap:0; height:24px; flex:0 0 auto;
+    background:var(--tab-bg); color:var(--tab-fg);
+    border-bottom:1px solid var(--border); overflow:hidden; white-space:nowrap;
+  }
+  .tab{
+    display:flex;align-items:center;gap:6px;padding:0 10px;cursor:pointer;
+    color:var(--tab-fg); border-right:1px solid color-mix(in srgb,var(--border) 60%, transparent);
+    user-select:none; font-size:12.5px;
+  }
+  .tab.active{ background:var(--tab-active-bg); color:var(--tab-active-fg); font-weight:600;}
+  .tab.hidden{ opacity:.5; font-style:italic;}
+  .tab .x{opacity:.6}
+  .tab .x:hover{opacity:1;color:var(--error)}
+  .tab.unishell{ color:var(--accent); font-weight:600;}
+  .tab.unishell.active{color:var(--tab-active-fg)}
+
+  /* work area + panes */
+  .workarea{ flex:1 1 auto; display:flex; gap:6px; padding:6px; min-height:0; }
+  .workarea.v{ flex-direction:column; }
+  .pane{
+    position:relative; min-width:0; min-height:0; flex:1 1 0;
+    border:1px solid var(--border); border-radius:3px;
+    display:flex; flex-direction:column; overflow:hidden; background:var(--bg);
+  }
+  .pane.focused{ border-color:var(--border-focus); }
+  .pane-title{
+    position:absolute; top:-1px; left:50%; transform:translate(-50%,-50%);
+    background:var(--bg); padding:0 8px; color:var(--accent);
+    font-size:12px; white-space:nowrap; max-width:90%; overflow:hidden; text-overflow:ellipsis;
+    display:flex; align-items:center; gap:8px; z-index:2;
+  }
+  .pane-title .ctl{cursor:pointer;opacity:.65}
+  .pane-title .ctl:hover{opacity:1;color:var(--accent)}
+  .pane-body{ flex:1 1 auto; overflow:auto; padding:10px 10px 8px; min-height:0; }
+  .pane-body::-webkit-scrollbar{width:8px;height:8px}
+  .pane-body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--border) 80%,transparent);border-radius:8px}
+
+  /* AR profile: minimal chrome */
+  .screen.profile-ar .pane{border:none}
+  .screen.profile-ar .pane-title{position:static;transform:none;background:transparent;justify-content:flex-start;left:auto;padding:0 0 4px;font-weight:700}
+  .screen.profile-ar .workarea{padding:4px;gap:4px}
+
+  /* shell scrollback + input */
+  .line{white-space:pre-wrap;word-break:break-word}
+  .role-text{color:var(--fg)} .role-dim{color:var(--dim)} .role-accent{color:var(--accent)}
+  .role-accent2{color:var(--accent2)} .role-ok{color:var(--ok)} .role-warn{color:var(--warn)}
+  .role-error{color:var(--error)} .role-title{color:var(--accent)}
+  .promptline{display:flex;align-items:center;gap:6px;margin-top:2px}
+  .promptline .sym{color:var(--accent);flex:0 0 auto}
+  .promptline input{
+    flex:1 1 auto; background:transparent; border:none; outline:none;
+    color:var(--fg); font:inherit; caret-color:var(--accent); padding:0;
+  }
+
+  /* generic app widgets */
+  .row{display:flex;align-items:center;gap:8px}
+  .muted{color:var(--dim)}
+  .sel{background:var(--sel-bg);color:var(--sel-fg)}
+  .tag{color:var(--accent2)}
+  .kbd{border:1px solid var(--border);border-radius:3px;padding:0 5px;color:var(--accent);font-size:12px}
+  .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;border:1px solid var(--border);vertical-align:middle}
+  .clickable{cursor:pointer}
+  .clickable:hover{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+  table.grid{border-collapse:collapse;width:100%}
+  table.grid td{padding:2px 4px;text-align:center}
+  .today{color:var(--ok);font-weight:700}
+  .curday{background:var(--sel-bg);color:var(--sel-fg);border-radius:3px}
+  .dot-act{color:var(--accent2)}
+
+  /* status bar */
+  .statusbar{
+    flex:0 0 auto; height:22px; display:flex; align-items:center; gap:10px;
+    background:var(--status-bg); color:var(--status-fg); padding:0 10px; font-size:12.5px;
+    white-space:nowrap; overflow:hidden;
+  }
+  .statusbar .right{margin-left:auto;display:flex;gap:10px;align-items:center}
+
+  /* faint scanline ambiance (desktop only) */
+  .scanlines{pointer-events:none;position:absolute;inset:0;opacity:.05;
+    background:repeating-linear-gradient(transparent 0 2px, #fff 2px 3px); z-index:5;}
+
+  .legend{max-width:1000px;width:100%;color:#7e8696;font-size:12px;display:flex;flex-wrap:wrap;gap:6px 16px}
+  .legend b{color:#aab2c2;font-weight:600}
+  footer{max-width:1000px;width:100%;color:#5d6678;font-size:11.5px;border-top:1px solid #1c212b;padding-top:8px}
+</style>
+</head>
+<body>
+  <div class="caption">
+    <h1>E-Console OS — browser preview</h1>
+    <p>A live mock of the UNISHELL desktop shell. Type a command and press Enter, or click a tab.
+      Try <code>help</code>, <code>calc 42*17</code>, <code>theme apply matrix</code>,
+      <code>profile set eink</code>, <code>parabash split right</code>,
+      <code>activity new project "Ship v1"</code>, <code>firewall status</code>.</p>
+  </div>
+
+  <div class="device">
+    <div class="device-bar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="mdl">E-CONSOLE · single-layer panes</span>
+    </div>
+    <div id="screen" class="screen profile-desktop">
+      <div id="tabstrip" class="tabstrip"></div>
+      <div id="workarea" class="workarea"></div>
+      <div class="statusbar">
+        <span id="status-left"></span>
+        <span class="right">
+          <span id="status-fw">🛡</span>
+          <span id="status-ctx"></span>
+          <span id="clock"></span>
+        </span>
+      </div>
+      <div class="scanlines"></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><b>Panes:</b> click a tab to focus · title-bar — hides · ✕ closes</span>
+    <span><b>Commands:</b> parabash · theme · profile · activity · calc · firewall · settings · users</span>
+    <span><b>Profiles:</b> desktop · eink · ar &nbsp; <b>Themes:</b> 7</span>
+  </div>
+
+  <footer>
+    Faithful preview of the real stdlib-curses shell in this repo
+    (<code>python3 -m econsole</code>). Rendering, themes and commands mirror the TUI;
+    on-device extras (PTY terminals, network reader, nftables) run natively. See
+    <a href="docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>.
+  </footer>
+
+<script>
+"use strict";
+//=============================================================================
+// Palette + themes (mirrors econsole/theme.py) — Tango 16-colour palette.
+//=============================================================================
+const PALETTE = {
+  black:"#000000", red:"#cc0000", green:"#4e9a06", yellow:"#c4a000",
+  blue:"#3465a4", magenta:"#75507b", cyan:"#06989a", white:"#d3d7cf",
+  gray:"#555753", grey:"#555753",
+  bright_red:"#ef2929", bright_green:"#8ae234", bright_yellow:"#fce94f",
+  bright_blue:"#729fcf", bright_magenta:"#ad7fa8", bright_cyan:"#34e2e2",
+  bright_white:"#eeeeec",
+};
+const hex = n => PALETTE[n] || "#eeeeec";
+
+function T(o){return o;}
+const THEMES = {
+  "econsole-dark": T({label:"E-Console Dark", hint:"desktop", desc:"Default desktop theme: dark, cyan accents.",
+    bg:"black",fg:"bright_white",dim:"gray",accent:"bright_cyan",accent2:"bright_magenta",
+    border:"gray",border_focus:"bright_cyan",status_fg:"bright_white",status_bg:"blue",
+    tab_fg:"gray",tab_bg:"black",tab_active_fg:"black",tab_active_bg:"bright_cyan",
+    sel_fg:"black",sel_bg:"bright_cyan",ok:"bright_green",warn:"bright_yellow",error:"bright_red"}),
+  "econsole-light": T({label:"E-Console Light", hint:"desktop", desc:"Light desktop theme for bright rooms.",
+    bg:"white",fg:"black",dim:"gray",accent:"blue",accent2:"magenta",
+    border:"gray",border_focus:"blue",status_fg:"white",status_bg:"blue",
+    tab_fg:"gray",tab_bg:"white",tab_active_fg:"white",tab_active_bg:"blue",
+    sel_fg:"white",sel_bg:"blue",ok:"green",warn:"yellow",error:"red"}),
+  "eink-dark": T({label:"E-Ink Dark", hint:"eink", desc:"High-contrast grayscale, inverted.",
+    bg:"black",fg:"bright_white",dim:"white",accent:"bright_white",accent2:"white",
+    border:"white",border_focus:"bright_white",status_fg:"black",status_bg:"white",
+    tab_fg:"white",tab_bg:"black",tab_active_fg:"black",tab_active_bg:"bright_white",
+    sel_fg:"black",sel_bg:"bright_white",ok:"bright_white",warn:"bright_white",error:"bright_white"}),
+  "eink-light": T({label:"E-Ink Light", hint:"eink", desc:"Paper-like black on white.",
+    bg:"white",fg:"black",dim:"black",accent:"black",accent2:"black",
+    border:"black",border_focus:"black",status_fg:"white",status_bg:"black",
+    tab_fg:"black",tab_bg:"white",tab_active_fg:"white",tab_active_bg:"black",
+    sel_fg:"white",sel_bg:"black",ok:"black",warn:"black",error:"black"}),
+  "ar-dark": T({label:"AR Dark", hint:"ar", desc:"High-contrast compact for AR glass.",
+    bg:"black",fg:"bright_white",dim:"bright_cyan",accent:"bright_cyan",accent2:"bright_green",
+    border:"bright_cyan",border_focus:"bright_white",status_fg:"black",status_bg:"bright_cyan",
+    tab_fg:"bright_cyan",tab_bg:"black",tab_active_fg:"black",tab_active_bg:"bright_cyan",
+    sel_fg:"black",sel_bg:"bright_cyan",ok:"bright_green",warn:"bright_yellow",error:"bright_red"}),
+  "matrix": T({label:"Matrix", hint:"desktop", desc:"Green phosphor terminal.",
+    bg:"black",fg:"bright_green",dim:"green",accent:"bright_green",accent2:"green",
+    border:"green",border_focus:"bright_green",status_fg:"black",status_bg:"bright_green",
+    tab_fg:"green",tab_bg:"black",tab_active_fg:"black",tab_active_bg:"bright_green",
+    sel_fg:"black",sel_bg:"bright_green",ok:"bright_green",warn:"bright_yellow",error:"bright_red"}),
+  "amber": T({label:"Amber CRT", hint:"desktop", desc:"Warm amber monochrome CRT.",
+    bg:"black",fg:"bright_yellow",dim:"yellow",accent:"bright_yellow",accent2:"yellow",
+    border:"yellow",border_focus:"bright_yellow",status_fg:"black",status_bg:"bright_yellow",
+    tab_fg:"yellow",tab_bg:"black",tab_active_fg:"black",tab_active_bg:"bright_yellow",
+    sel_fg:"black",sel_bg:"bright_yellow",ok:"bright_green",warn:"bright_yellow",error:"bright_red"}),
+};
+const PROFILES = {
+  desktop:{label:"Desktop", theme:"econsole-dark", fps:24, desc:"Full keyboard/mouse, larger panes."},
+  eink:{label:"E-Ink", theme:"eink-light", fps:2, desc:"Grayscale, high-contrast, low-refresh."},
+  ar:{label:"AR Companion", theme:"ar-dark", fps:10, desc:"Compact, glanceable, command-driven."},
+};
+
+//=============================================================================
+// State
+//=============================================================================
+const APPS = {
+  calculator:"Calculator", calendar:"Calendar", activity:"Activity Handler",
+  tasks:"Tasks", notes:"Notes", settings:"Settings", themes:"Theme Library",
+  cheatsheet:"Hotkey Cheatsheet", users:"User Manager", firewall:"Firewall Panel",
+  files:"File Manager", browser:"Browser", image:"Image Viewer", media:"Media Viewer",
+};
+const APP_ALIASES = {cal:"calendar", calc:"calculator", act:"activity", task:"tasks",
+  todo:"tasks", note:"notes", config:"settings", keys:"cheatsheet", user:"users",
+  fw:"firewall", fm:"files", lf:"files", img:"image", video:"media", web:"browser"};
+
+const today = new Date();
+const iso = d => d.toISOString().slice(0,10);
+const plus = n => { const d=new Date(today); d.setDate(d.getDate()+n); return iso(d); };
+
+const state = {
+  theme:"econsole-dark",
+  profile:"desktop",
+  config:{show_clock:true, firewall_enabled:true, auto_update:true, current_user:"user"},
+  orientation:"h",
+  zoom:false,
+  focusedId:1,
+  nextId:1,
+  panes:[],
+  activity:[
+    {id:1,type:"project",title:"E-Console OS",status:"active",due:null},
+    {id:2,type:"task",title:"Implement pane manager",status:"done",due:null},
+    {id:3,type:"task",title:"Build web preview",status:"open",due:null},
+    {id:4,type:"habit",title:"Daily standup",status:"open",due:null},
+    {id:5,type:"event",title:"Investor demo",status:"open",due:plus(0)},
+    {id:6,type:"reminder",title:"Flash Pi 5 image",status:"open",due:plus(2)},
+  ],
+  actSeq:6,
+  notes:[{id:1,title:"Design",body:"single-layer panes; no overlapping windows",updated:iso(today)}],
+  noteSeq:1,
+  users:[{id:1,name:"user",avatar:"U",theme:null}],
+  userSeq:1,
+  firewall:[
+    {action:"allow",dir:"in",proto:"any",port:"lo",desc:"Loopback interface",enabled:true},
+    {action:"allow",dir:"in",proto:"any",port:"established",desc:"Established/related",enabled:true},
+    {action:"allow",dir:"in",proto:"tcp",port:"22",desc:"SSH remote access",enabled:true},
+    {action:"allow",dir:"out",proto:"tcp",port:"80,443",desc:"HTTP/HTTPS (web, apt)",enabled:true},
+    {action:"allow",dir:"out",proto:"udp",port:"53",desc:"DNS resolution",enabled:true},
+    {action:"deny",dir:"in",proto:"any",port:"any",desc:"Default: drop other inbound",enabled:true},
+  ],
+};
+
+//=============================================================================
+// Helpers
+//=============================================================================
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const allocId = () => ++state.nextId;
+function getPane(id){ return state.panes.find(p=>p.id===id); }
+function visible(){ return state.panes.filter(p=>p.state==="visible"); }
+function focused(){ return getPane(state.focusedId); }
+function log(pane, text, role="text"){ String(text).split("\n").forEach(l=>pane.scroll.push({text:l,role})); }
+
+//=============================================================================
+// Pane lifecycle
+//=============================================================================
+function addUnishell(){
+  const p={id:1,kind:"unishell",title:"UNISHELL",state:"visible",weight:1,persistent:true,
+           scroll:[],history:[],histIdx:null};
+  log(p,"UNISHELL v0.1.0","accent");
+  log(p,"the permanent root shell · single-layer panes","dim");
+  log(p,"type 'help' for commands · 'cmd cheatsheet' for everything","dim");
+  log(p,"","text");
+  state.panes.push(p);
+}
+function parabashIndex(){ return state.panes.filter(p=>p.kind==="parabash").length+1; }
+function newParabash(cmd){
+  const idx=parabashIndex();
+  const p={id:allocId(),kind:"parabash",title:"Parabash "+idx,state:"visible",weight:1,
+           index:idx,cwd:"~",scroll:[],history:[],histIdx:null};
+  log(p,"Parabash "+idx+" — system shell (~)","dim");
+  log(p,"runs /bin/sh commands · 'cd' to navigate","dim");
+  state.panes.push(p);
+  if(cmd) runParabash(p,cmd);
+  return p;
+}
+function splitParabash(dir){
+  state.orientation=(dir==="up"||dir==="down")?"v":"h"; state.zoom=false;
+  return newParabash();
+}
+function openApp(name,opts={}){
+  name=APP_ALIASES[name]||name;
+  if(!APPS[name]) return null;
+  if(!Object.keys(opts).length){
+    const ex=state.panes.find(p=>p.kind===name);
+    if(ex){ ex.state="visible"; return ex; }
+  }
+  const p={id:allocId(),kind:name,title:APPS[name],state:"visible",weight:1,app:{}};
+  if(name==="calculator") p.app={history:[],input:""};
+  if(name==="calendar") p.app={cursor:new Date(today)};
+  if(name==="activity") p.app={filter:"all"};
+  if(name==="media") p.app={frame:0,playing:true};
+  if(name==="browser") p.app={url:opts.url||"", };
+  if(name==="image") p.app={path:opts.path||""};
+  if(name==="files") p.app={path:"~"};
+  state.panes.push(p);
+  return p;
+}
+function openLauncher(){
+  const ex=state.panes.find(p=>p.kind==="launcher");
+  if(ex){ex.state="visible";return ex;}
+  const p={id:allocId(),kind:"launcher",title:"App Launcher",state:"visible",weight:1};
+  state.panes.push(p); return p;
+}
+function hidePane(id){ const p=getPane(id); if(!p)return false; p.state="hidden";
+  if(state.focusedId===id){ const v=visible(); state.focusedId=v.length?v[0].id:1; state.zoom=false;} return true;}
+function showPane(id){ const p=getPane(id); if(!p)return false; p.state="visible"; state.focusedId=id; return true;}
+function closePane(id){ const p=getPane(id); if(!p||p.persistent)return false;
+  state.panes=state.panes.filter(x=>x.id!==id);
+  if(state.focusedId===id){ const v=visible(); state.focusedId=v.length?v[0].id:1; state.zoom=false;} return true;}
+function focusPane(id){ const p=getPane(id); if(!p)return false; if(p.state==="hidden")p.state="visible"; state.focusedId=id; return true;}
+
+//=============================================================================
+// Theme / profile
+//=============================================================================
+function applyTheme(name){
+  const t=THEMES[name]; if(!t)return false;
+  state.theme=name;
+  const s=document.documentElement.style;
+  const set=(k,v)=>s.setProperty(k,hex(v));
+  set("--bg",t.bg); set("--fg",t.fg); set("--dim",t.dim); set("--accent",t.accent);
+  set("--accent2",t.accent2); set("--border",t.border); set("--border-focus",t.border_focus);
+  set("--status-fg",t.status_fg); set("--status-bg",t.status_bg);
+  set("--tab-fg",t.tab_fg); set("--tab-bg",t.tab_bg);
+  set("--tab-active-fg",t.tab_active_fg); set("--tab-active-bg",t.tab_active_bg);
+  set("--sel-fg",t.sel_fg); set("--sel-bg",t.sel_bg);
+  set("--ok",t.ok); set("--warn",t.warn); set("--error",t.error);
+  return true;
+}
+function setProfile(name){
+  if(!PROFILES[name])return false;
+  state.profile=name;
+  $("#screen").className="screen profile-"+name;
+  applyTheme(PROFILES[name].theme);
+  return true;
+}
+
+//=============================================================================
+// Safe calculator (no arbitrary eval)
+//=============================================================================
+function safeCalc(expr){
+  let e=expr.replace(/\^/g,"**")
+    .replace(/\bpi\b/g,"Math.PI").replace(/\btau\b/g,"(2*Math.PI)").replace(/\be\b/g,"Math.E")
+    .replace(/\b(sqrt|sin|cos|tan|asin|acos|atan|log2|log10|log|exp|floor|ceil|abs|round|min|max|hypot)\b/g,
+      m=>"Math."+(m==="abs"||m==="round"||m==="min"||m==="max"?m:m));
+  // Math.abs/round/min/max exist; ok.
+  if(!/^[\d\s+\-*/%.(),]*(?:Math\.[A-Za-z0-9]+[\d\s+\-*/%.(),]*)*$/.test(e))
+    throw new Error("only numbers are allowed");
+  let v;
+  try{ v=Function('"use strict";return ('+e+')')(); }
+  catch(err){ throw new Error("syntax error"); }
+  if(typeof v!=="number"||!isFinite(v)) throw new Error("invalid expression");
+  return v;
+}
+const fmtNum = v => Number.isInteger(v)?String(v):String(parseFloat(v.toFixed(10)));
+
+//=============================================================================
+// Command interpreter (mirrors econsole/commands/builtins.py)
+//=============================================================================
+function splitArgs(line){
+  const out=[]; const re=/"([^"]*)"|'([^']*)'|(\S+)/g; let m;
+  while((m=re.exec(line))) out.push(m[1]??m[2]??m[3]);
+  return out;
+}
+const CMDS={};
+function reg(name,summary,fn,usage,cat="general",aliases=[]){
+  CMDS[name]={name,summary,fn,usage:usage||name,cat};
+  aliases.forEach(a=>CMDS[a]={alias:name});
+}
+function resolveCmd(n){ const c=CMDS[n]; return c?(c.alias?CMDS[c.alias]:c):null; }
+
+reg("help","List available commands",(p,a)=>{
+  const cats={}; Object.values(CMDS).forEach(c=>{if(c.alias)return;(cats[c.cat]=cats[c.cat]||[]).push(c);});
+  const order=["general","panes","apps","system"];
+  log(p,"E-Console OS — UNISHELL v0.1.0","accent"); log(p,"");
+  order.forEach(cat=>{ if(!cats[cat])return; log(p,cat.toUpperCase(),"accent2");
+    cats[cat].sort((x,y)=>x.name.localeCompare(y.name)).forEach(c=>log(p,"  "+c.usage.padEnd(26)+" "+c.summary));
+    log(p,""); });
+  log(p,"Tip: 'cmd cheatsheet' opens the full reference.","dim");
+},"help");
+reg("cmd","Command reference",(p,a)=>{ if(a[0]==="cheatsheet"){openApp("cheatsheet");return ok("opened Hotkey Cheatsheet");} return CMDS.help.fn(p,a);},"cmd [cheatsheet]","general",["commands"]);
+reg("version","Show the UNISHELL version",(p)=>ok("UNISHELL v0.1.0"),"version");
+reg("about","About E-Console",(p)=>info(p,"E-Console OS\nUNISHELL v0.1.0\nTerminal-first desktop shell: single-layer panes, UNIX-compatible, E-Ink/AR profiles."),"about");
+reg("sysinfo","Show system status",(p)=>info(p,
+  "UNISHELL v0.1.0\nprofile : "+state.profile+" ("+PROFILES[state.profile].label+")\ntheme   : "+state.theme+
+  "\nuser    : "+(state.config.current_user||"—")+"\npanes   : "+state.panes.length+
+  "\nfirewall: "+(state.config.firewall_enabled?"on":"off")),"sysinfo");
+reg("clear","Clear the scrollback",(p)=>{p.scroll=[];return null;},"clear");
+reg("quit","Exit E-Console",(p)=>ok("(preview) the browser shell can't exit — close the tab"),"quit","general",["exit"]);
+
+reg("parabash","Manage terminal panes",(p,a)=>{
+  if(!a.length){newParabash();return ok("opened a new Parabash");}
+  const sub=a[0], rest=a.slice(1);
+  if(sub==="new"){const np=newParabash(rest.join(" ")||null);return ok("opened Parabash (pane "+np.id+")");}
+  if(sub==="split"){const np=splitParabash(rest[0]||"right");return ok("split "+(rest[0]||"right")+": pane "+np.id);}
+  if(["hide","focus","close"].includes(sub)){
+    const n=parseInt(rest[0]); if(isNaN(n))return err("usage: parabash "+sub+" <pane-number>");
+    const r= sub==="hide"?hidePane(n): sub==="focus"?focusPane(n): closePane(n);
+    return r?ok(sub+" pane "+n):err("no pane "+n);
+  }
+  if(sub==="list")return CMDS.panes.fn(p,[]);
+  return err("usage: parabash new|split <dir>|hide N|focus N|close N|list");
+},"parabash new|split <dir>|hide N","panes",["pb"]);
+reg("panes","List open panes",(p)=>{
+  let out="panes:"; state.panes.forEach(pn=>{
+    const flag=pn.id===state.focusedId?"*":(pn.state==="visible"?" ":"h");
+    out+="\n  "+flag+" ["+pn.id+"] "+pn.title.padEnd(20)+" "+pn.kind.padEnd(10)+" "+pn.state;
+  }); return info(p,out);
+},"panes");
+reg("focus","Focus a pane by number",(p,a)=>{const n=parseInt(a[0]); if(isNaN(n))return err("usage: focus N"); return focusPane(n)?ok("focused pane "+n):err("no pane "+n);},"focus N","panes");
+reg("hide","Hide a pane by number",(p,a)=>{const n=parseInt(a[0]); if(isNaN(n))return err("usage: hide N"); return hidePane(n)?ok("hid pane "+n):err("no pane "+n);},"hide N","panes");
+reg("close","Close a pane by number",(p,a)=>{const n=parseInt(a[0]); if(isNaN(n))return err("usage: close N"); return closePane(n)?ok("closed pane "+n):err("cannot close pane "+n);},"close N","panes");
+reg("split","Split into a new Parabash",(p,a)=>{const np=splitParabash(a[0]||"right");return ok("split "+(a[0]||"right")+" (pane "+np.id+")");},"split <dir>","panes");
+reg("zoom","Toggle full-screen pane",(p)=>{state.zoom=!state.zoom;return ok("zoom "+(state.zoom?"on":"off"));},"zoom","panes");
+
+reg("calc","Evaluate an expression",(p,a)=>{
+  if(!a.length){openApp("calculator");return ok("opened Calculator");}
+  try{return ok(a.join(" ")+" = "+fmtNum(safeCalc(a.join(" "))));}catch(e){return err(e.message);}
+},"calc <expr>","apps");
+reg("calendar","Calendar / today",(p,a)=>{
+  if(a[0]==="today"){
+    const items=state.activity.filter(i=>(i.due||"")===iso(today));
+    let out=today.toDateString();
+    if(items.length){out+="\nactivity:"; items.forEach(i=>out+="\n  • ["+i.type+"] "+i.title);}
+    else out+="\nno activity scheduled today";
+    return info(p,out);
+  }
+  openApp("calendar"); return ok("opened Calendar");
+},"calendar [today]","apps",["cal"]);
+reg("activity","Activity Handler",(p,a)=>{
+  if(!a.length){openApp("activity");return ok("opened Activity Handler");}
+  if(a[0]==="list"){ if(!state.activity.length)return ok("no activity items");
+    let out="activity:"; state.activity.forEach(i=>out+="\n  "+(i.status==="done"?"✓":"•")+" ["+i.type+"] "+i.title); return info(p,out);}
+  if(a[0]==="new"){
+    let rest=a.slice(1), type="task";
+    const TYPES=["task","habit","reminder","event","goal","project"];
+    if(rest.length&&TYPES.includes(rest[0])){type=rest[0];rest=rest.slice(1);}
+    const title=rest.join(" ").trim(); if(!title)return err('usage: activity new [type] "title"');
+    state.activity.push({id:++state.actSeq,type,title,status:"open",due:null});
+    openApp("activity"); return ok("added "+type+": "+title);
+  }
+  return err('usage: activity | activity list | activity new [type] "title"');
+},'activity [new [type] "…"]',"apps");
+reg("tasks","Tasks",(p,a)=>{ if(a[0]==="new"){const t=a.slice(1).join(" ").trim(); if(!t)return err('usage: tasks new "title"');
+  state.activity.push({id:++state.actSeq,type:"task",title:t,status:"open",due:null}); openApp("tasks"); return ok("task added");}
+  openApp("tasks"); return ok("opened Tasks");},'tasks [new "…"]',"apps",["todo"]);
+reg("notes","Notes",(p,a)=>{ if(a[0]==="new"){const t=a.slice(1).join(" ").trim(); if(!t)return err('usage: notes new "text"');
+  state.notes.push({id:++state.noteSeq,title:t,body:"",updated:iso(today)}); openApp("notes"); return ok("note added");}
+  openApp("notes"); return ok("opened Notes");},'notes [new "…"]',"apps");
+reg("web","Open a web page (reader)",(p,a)=>{
+  const url=a.filter(x=>x!=="--visual"&&x!=="-v").join(" ");
+  if(!url){openApp("browser");return ok("opened Browser");}
+  openApp("browser",{url}); return ok("opening "+url+(a.includes("--visual")?" (visual pane not available — reader view)":""));
+},"web [--visual] <url>","apps",["browser"]);
+reg("files","File manager",(p,a)=>{openApp("files");return ok("opened File Manager");},"files [path]","apps",["lf"]);
+reg("image","View an image",(p,a)=>{if(!a.length)return err("usage: image <path>");openApp("image",{path:a.join(" ")});return ok("opened Image Viewer");},"image <path>","apps");
+reg("media","Play frame-based media",(p,a)=>{openApp("media");return ok("opened Media Viewer");},"media [path]","apps",["video"]);
+reg("apps","Open the app launcher",(p)=>{openLauncher();return ok("opened App Launcher");},"apps","apps");
+reg("app","Open a named app",(p,a)=>{ if(!a.length){openLauncher();return ok("opened App Launcher");}
+  return openApp(a[0])?ok("opened "+a[0]):err("unknown app: "+a[0]);},"app <name>","apps",["open"]);
+
+reg("settings","Open settings",(p)=>{openApp("settings");return ok("opened Settings");},"settings","system",["config"]);
+reg("theme","Theme list/apply",(p,a)=>{
+  if(!a.length){openApp("themes");return ok("opened Theme Library");}
+  if(a[0]==="list"){let out="themes:"; Object.entries(THEMES).forEach(([n,t])=>out+="\n  "+(n===state.theme?"*":" ")+" "+n.padEnd(16)+" "+t.desc); return info(p,out);}
+  if(a[0]==="current")return ok("current theme: "+state.theme);
+  const name=a[0]==="apply"?a[1]:a[0];
+  return applyTheme(name)?ok("applied theme: "+name):err("unknown theme: "+name);
+},"theme list|apply <name>","system");
+reg("profile","Display profile",(p,a)=>{
+  if(!a.length||a[0]==="list"){let out="display profiles:"; Object.entries(PROFILES).forEach(([n,pr])=>out+="\n  "+(n===state.profile?"*":" ")+" "+n.padEnd(10)+" "+pr.desc); return info(p,out);}
+  if(a[0]==="current")return ok("current profile: "+state.profile);
+  const name=a[0]==="set"?a[1]:a[0];
+  return setProfile(name)?ok("profile: "+name+" (theme → "+state.theme+")"):err("unknown profile: "+name);
+},"profile list|set <name>","system");
+reg("firewall","Firewall panel/status",(p,a)=>{
+  if(a[0]==="enable"||a[0]==="disable"){state.config.firewall_enabled=a[0]==="enable";return ok("firewall "+a[0]+"d");}
+  if(a[0]==="status")return ok("firewall: "+(state.config.firewall_enabled?"ENABLED":"DISABLED")+" · policy: INPUT DROP / OUTPUT ACCEPT (default-deny inbound)");
+  openApp("firewall"); return ok("opened Firewall Panel");
+},"firewall [status|enable|disable]","system",["fw"]);
+reg("users","User manager",(p,a)=>{
+  if(a[0]==="list"){if(!state.users.length)return ok("no users"); let out="users:";
+    state.users.forEach(u=>out+="\n  "+(u.name===state.config.current_user?"*":" ")+" "+u.name+" (theme: "+(u.theme||"default")+")"); return info(p,out);}
+  if(a[0]==="add"){const name=a.slice(1).join(" ").trim(); if(!name)return err("usage: users add <name>");
+    if(state.users.length>=3)return err("maximum of 3 users reached");
+    if(state.users.some(u=>u.name.toLowerCase()===name.toLowerCase()))return err("user '"+name+"' already exists");
+    state.users.push({id:++state.userSeq,name,avatar:name[0].toUpperCase(),theme:null}); openApp("users"); return ok("added user: "+name);}
+  openApp("users"); return ok("opened User Manager");
+},"users [add <name>|list]","system");
+
+function ok(msg){ return {role:"ok",msg}; }
+function err(msg){ return {role:"error",msg}; }
+function info(p,msg){ log(p,msg,"text"); return null; }
+
+function dispatch(pane,line){
+  line=line.trim(); if(!line)return;
+  pane.history.push(line); pane.histIdx=null;
+  log(pane,"▸ "+line,"accent");
+  const argv=splitArgs(line); const cmd=resolveCmd(argv[0]);
+  if(!cmd){ log(pane,"command not found: "+argv[0],"error");
+    log(pane,"(in the real shell this falls through to /bin/sh)","dim"); return; }
+  const r=cmd.fn(pane,argv.slice(1));
+  if(r&&r.msg) log(pane,r.msg,r.role);
+}
+function runParabash(pane,line){
+  line=line.trim(); if(!line)return; pane.history.push(line); pane.histIdx=null;
+  log(pane,"$ "+line,"accent");
+  if(line==="clear"){pane.scroll=[];return;}
+  if(line==="cd"||line.startsWith("cd ")){pane.cwd=line.slice(2).trim()||"~";log(pane,"","text");return;}
+  // canned outputs so the preview feels alive
+  const canned={
+    "ls":"docs  econsole  packaging  tests  tools  README.md  pyproject.toml",
+    "pwd":"/home/user/unicel","whoami":state.config.current_user||"user",
+    "uname -a":"Linux econsole 6.x #1 SMP aarch64 GNU/Linux",
+    "git status":"On branch main\nnothing to commit, working tree clean",
+    "python3 --version":"Python 3.11.x",
+  };
+  if(canned[line]!==undefined){ if(canned[line])log(pane,canned[line],"text"); }
+  else if(line.startsWith("echo ")) log(pane,line.slice(5),"text");
+  else log(pane,line.split(" ")[0]+": (preview) command runs on-device","dim");
+}
+
+//=============================================================================
+// App pane rendering -> HTML
+//=============================================================================
+function renderApp(p){
+  switch(p.kind){
+    case "calculator": return appCalculator(p);
+    case "calendar": return appCalendar(p);
+    case "activity": return appActivity(p);
+    case "tasks": return appTasks(p);
+    case "notes": return appNotes(p);
+    case "settings": return appSettings(p);
+    case "themes": return appThemes(p);
+    case "cheatsheet": return appCheatsheet(p);
+    case "users": return appUsers(p);
+    case "firewall": return appFirewall(p);
+    case "files": return appFiles(p);
+    case "browser": return appBrowser(p);
+    case "image": return appImage(p);
+    case "media": return appMedia(p);
+    case "launcher": return appLauncher(p);
+  }
+  return "<div class='muted'>"+esc(p.kind)+"</div>";
+}
+function appCalculator(p){
+  let h="<div class='muted'>Expression</div>"+
+    "<div class='promptline'><span class='sym'>›</span>"+
+    "<input data-role='calc-input' data-pane='"+p.id+"' value='"+esc(p.app.input||"")+"' placeholder='42*17, sqrt(2), pi*3 …'></div>"+
+    "<div style='border-top:1px solid var(--border);margin:8px 0'></div>";
+  (p.app.history||[]).slice(-12).reverse().forEach((e,i)=>{
+    h+="<div class='line "+(i===0?"role-text":"role-dim")+"'>"+esc(e.expr)+" = "+esc(e.res)+"</div>";
+  });
+  if(p.app.err) h="<div class='line role-error'>error: "+esc(p.app.err)+"</div>"+h;
+  return h;
+}
+function appCalendar(p){
+  const c=p.app.cursor, y=c.getFullYear(), m=c.getMonth();
+  const months=["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const first=new Date(y,m,1); let start=(first.getDay()+6)%7; // Monday-first
+  const days=new Date(y,m+1,0).getDate();
+  let h="<div class='row' style='justify-content:space-between'><span class='role-accent'>"+months[m]+" "+y+
+    "</span><span><span class='kbd clickable' data-action='cal-prev' data-pane='"+p.id+"'>[</span> "+
+    "<span class='kbd clickable' data-action='cal-today' data-pane='"+p.id+"'>today</span> "+
+    "<span class='kbd clickable' data-action='cal-next' data-pane='"+p.id+"'>]</span></span></div>";
+  h+="<table class='grid'><tr>"+["Mo","Tu","We","Th","Fr","Sa","Su"].map(d=>"<td class='role-accent'>"+d+"</td>").join("")+"</tr><tr>";
+  let col=0;
+  for(let i=0;i<start;i++){h+="<td></td>";col++;}
+  for(let d=1;d<=days;d++){
+    const ds=iso(new Date(y,m,d));
+    const isToday=ds===iso(today);
+    const hasAct=state.activity.some(a=>a.due===ds);
+    let cls=isToday?"today":"";
+    h+="<td class='"+cls+"'>"+d+(hasAct?"<span class='dot-act'>·</span>":"")+"</td>";
+    if(++col%7===0)h+="</tr><tr>";
+  }
+  h+="</tr></table>";
+  const items=state.activity.filter(a=>a.due===iso(today));
+  h+="<div style='border-top:1px solid var(--border);margin:8px 0'></div>";
+  h+="<div class='role-accent'>"+today.toDateString()+"</div>";
+  if(items.length) items.forEach(i=>h+="<div class='line'>• ["+esc(i.type)+"] "+esc(i.title)+"</div>");
+  else h+="<div class='muted'>no activity — try: activity new \"…\"</div>";
+  return h;
+}
+const TYPE_TAG={task:"TASK",habit:"HABT",reminder:"RMND",event:"EVNT",goal:"GOAL",project:"PROJ"};
+const STAT_MARK={open:"○",active:"◐",done:"●"};
+function appActivity(p){
+  const TYPES=["all","task","habit","reminder","event","goal","project"];
+  const f=p.app.filter;
+  let items=f==="all"?state.activity:state.activity.filter(i=>i.type===f);
+  const counts={}; Object.keys(TYPE_TAG).forEach(t=>counts[t]=state.activity.filter(i=>i.type===t).length);
+  let h="<div class='row' style='flex-wrap:wrap;gap:4px'>";
+  TYPES.forEach(t=>h+="<span class='kbd clickable "+(t===f?"sel":"")+"' data-action='act-filter' data-pane='"+p.id+"' data-f='"+t+"'>"+t+"</span>");
+  h+="</div><div class='muted' style='margin:6px 0'>"+Object.keys(TYPE_TAG).map(t=>TYPE_TAG[t]+":"+counts[t]).join("  ")+"</div>";
+  if(!items.length) h+="<div class='muted'>Nothing here. Try: activity new [type] \"title\"</div>";
+  items.forEach(i=>{
+    const due=i.due?" ⏲ "+i.due:"";
+    h+="<div class='line clickable "+(i.status==="done"?"role-dim":"")+"' data-action='act-cycle' data-pane='"+p.id+"' data-id='"+i.id+"'>"+
+      (STAT_MARK[i.status]||"○")+" <span class='tag'>"+TYPE_TAG[i.type]+"</span> "+esc(i.title)+"<span class='muted'>"+esc(due)+"</span></div>";
+  });
+  h+="<div class='muted' style='margin-top:6px'>click an item to cycle status · click a filter chip</div>";
+  return h;
+}
+function appTasks(p){
+  const items=state.activity.filter(i=>i.type==="task");
+  const open=items.filter(i=>i.status!=="done").length;
+  let h="<div class='muted'>"+open+" open / "+items.length+" total</div>";
+  if(!items.length) h+="<div class='muted'>No tasks. Try: tasks new \"…\"</div>";
+  const CK={open:"[ ]",active:"[~]",done:"[x]"};
+  items.forEach(i=>h+="<div class='line clickable "+(i.status==="done"?"role-dim":"")+"' data-action='act-cycle' data-pane='"+p.id+"' data-id='"+i.id+"'>"+CK[i.status]+" "+esc(i.title)+"</div>");
+  return h;
+}
+function appNotes(p){
+  let h=""; if(!state.notes.length) h="<div class='muted'>No notes. Try: notes new \"…\"</div>";
+  state.notes.forEach(n=>h+="<div class='line'>▸ <span class='role-accent'>"+esc(n.title)+"</span> <span class='muted'>"+esc(n.updated)+"</span></div>"+
+    (n.body?"<div class='muted' style='margin:0 0 6px 14px'>"+esc(n.body)+"</div>":""));
+  return h;
+}
+function appSettings(p){
+  const rows=[
+    ["Display profile",state.profile,"set-profile"],
+    ["Theme",state.theme,"set-theme"],
+    ["Show clock",state.config.show_clock?"on":"off","toggle-clock"],
+    ["Firewall enabled",state.config.firewall_enabled?"on":"off","toggle-fw"],
+    ["Automatic updates",state.config.auto_update?"on":"off","toggle-up"],
+    ["Current user",state.config.current_user||"—",""],
+  ];
+  let h="";
+  rows.forEach(([label,val,act])=>{
+    h+="<div class='row "+(act?"clickable":"")+"' style='justify-content:space-between;padding:2px 0'"+(act?" data-action='"+act+"' data-pane='"+p.id+"'":"")+">"+
+      "<span>"+esc(label)+"</span><span class='role-accent'>‹ "+esc(val)+" ›</span></div>";
+  });
+  h+="<div class='muted' style='margin-top:8px'>click a row to change it</div>";
+  return h;
+}
+function appThemes(p){
+  let h=""; Object.entries(THEMES).forEach(([n,t])=>{
+    const cur=n===state.theme;
+    h+="<div class='line clickable' data-action='apply-theme' data-pane='"+p.id+"' data-name='"+n+"'>"+
+      (cur?"● ":"  ")+"<span class='swatch' style='background:"+hex(t.bg)+"'></span> "+
+      "<span class='swatch' style='background:"+hex(t.accent)+"'></span> "+
+      "<span style='display:inline-block;min-width:130px'>"+esc(t.label)+"</span> "+
+      "<span class='muted'>"+esc(t.hint)+" · "+esc(t.desc)+"</span></div>";
+  });
+  return h;
+}
+function appCheatsheet(p){
+  const PANES=[["Ctrl-A then n","New Parabash pane"],["Ctrl-A then s / v","Split right / down"],
+    ["Ctrl-A then w","Toggle orientation"],["Ctrl-A then z","Toggle full-screen"],
+    ["Ctrl-A then h / x","Hide / close pane"],["Ctrl-A then o","Focus next pane"],
+    ["Ctrl-A then 1..9","Focus pane by number"],["Ctrl-A then ←→↑↓","Resize focused pane"],
+    ["Ctrl-A then u","Focus UNISHELL"],["Ctrl-A then q / F10","Quit"]];
+  const SYS=[["F1","Hotkey Cheatsheet"],["F2","App Launcher"],["F3","Focus next pane"]];
+  let h="<div class='role-accent'>PANES</div>";
+  PANES.forEach(([k,d])=>h+="<div class='line'>  <span class='kbd'>"+esc(k)+"</span> "+esc(d)+"</div>");
+  h+="<div class='role-accent' style='margin-top:6px'>SYSTEM</div>";
+  SYS.forEach(([k,d])=>h+="<div class='line'>  <span class='kbd'>"+esc(k)+"</span> "+esc(d)+"</div>");
+  h+="<div class='role-accent' style='margin-top:6px'>COMMANDS</div>";
+  Object.values(CMDS).filter(c=>!c.alias).sort((a,b)=>a.name.localeCompare(b.name))
+    .forEach(c=>h+="<div class='line'>  "+esc(c.usage.padEnd(26))+" <span class='muted'>"+esc(c.summary)+"</span></div>");
+  h+="<div class='muted' style='margin-top:6px'>(leader hotkeys are active in the native TUI)</div>";
+  return h;
+}
+function appUsers(p){
+  let h="<div class='muted'>"+state.users.length+"/3 users</div>";
+  state.users.forEach(u=>{
+    const cur=u.name===state.config.current_user;
+    h+="<div class='line'>"+(cur?"★ ":"  ")+"("+esc(u.avatar)+") <span style='display:inline-block;min-width:120px'>"+esc(u.name)+"</span> theme:"+esc(u.theme||"default")+"</div>";
+  });
+  h+="<div class='muted' style='margin-top:6px'>add via: users add &lt;name&gt; (max 3)</div>";
+  return h;
+}
+function appFirewall(p){
+  const on=state.config.firewall_enabled;
+  let h="<div class='row'><span class='muted' style='min-width:80px'>Default:</span><span class='"+(on?"role-ok":"role-warn")+"'>INPUT DROP · OUTPUT ACCEPT · FORWARD DROP</span></div>";
+  h+="<div class='row'><span class='muted' style='min-width:80px'>Status:</span><span class='"+(on?"role-ok":"role-error")+" clickable' data-action='toggle-fw' data-pane='"+p.id+"'>"+(on?"active (default-deny inbound)":"INACTIVE — host exposed")+" ⟳</span></div>";
+  h+="<div style='border-top:1px solid var(--border);margin:8px 0'></div><div class='role-accent'>RULES</div>";
+  state.firewall.forEach((r,idx)=>{
+    const role=!r.enabled?"role-dim":(r.action==="allow"?"role-ok":"role-warn");
+    h+="<div class='line clickable "+role+"' data-action='fw-toggle' data-pane='"+p.id+"' data-idx='"+idx+"'>"+
+      (r.enabled?"✓":"✗")+" "+r.action.toUpperCase().padEnd(5)+" "+r.dir.padEnd(3)+" "+r.proto.padEnd(4)+" "+String(r.port).padEnd(12)+" "+esc(r.desc)+"</div>";
+  });
+  h+="<div class='muted' style='margin-top:6px'>click a rule to toggle it</div>";
+  return h;
+}
+function appFiles(p){
+  const entries=[["..",""],["docs/",""],["econsole/",""],["packaging/",""],["tests/",""],["tools/",""],
+    ["README.md","6K"],["LICENSE","1K"],["Makefile","0.6K"],["pyproject.toml","0.7K"],["index.html","28K"]];
+  let h="<div class='muted'>~/unicel</div>";
+  entries.forEach(([n,s])=>{
+    const dir=n.endsWith("/")||n==="..";
+    h+="<div class='row' style='justify-content:space-between'><span class='"+(dir?"role-accent":"")+"'>"+(dir?"📁 ":"   ")+esc(n)+"</span><span class='muted'>"+esc(s)+"</span></div>";
+  });
+  return h;
+}
+function appBrowser(p){
+  const url=p.app.url;
+  if(!url) return "<div class='muted'>Browser — reader view</div><div class='muted'>open with: web &lt;url&gt;</div>";
+  return "<div class='role-accent'>"+esc(url)+"</div>"+
+    "<div style='border-top:1px solid var(--border);margin:6px 0'></div>"+
+    "<div class='muted'>[reader view]</div>"+
+    "<div class='line'>E-Console fetches the page on-device and strips it to clean,"+
+    " low-power text — the primary path on E-Ink/AR. The graphical <span class='role-accent'>web --visual</span>"+
+    " pane is the desktop-only future step.</div>";
+}
+function appImage(p){
+  return "<div class='role-accent'>"+esc(p.app.path||"(no image)")+"</div>"+
+    "<pre class='line' style='line-height:1'>   .:-=+*#%@@%#*+=-:.\n  :=+*#%@@@@@@@@%#*+=:\n   .:-=+*#%%%#*+=-:.</pre>"+
+    "<div class='muted'>ASCII/half-block render · Pillow enables richer previews on-device</div>";
+}
+const MEDIA_FRAMES=[
+"   ●        \n  E-CONSOLE \n   frame 1  \n  [>       ]","    ●       \n  E-CONSOLE \n   frame 2  \n  [=>      ]",
+"     ●      \n  E-CONSOLE \n   frame 3  \n  [==>     ]","      ●     \n  E-CONSOLE \n   frame 4  \n  [===>    ]",
+"       ●    \n  E-CONSOLE \n   frame 5  \n  [====>   ]","        ●   \n  E-CONSOLE \n   frame 6  \n  [=====>  ]",
+"         ●  \n  E-CONSOLE \n   frame 7  \n  [======> ]","          ● \n  E-CONSOLE \n   frame 8  \n  [=======>]"];
+function appMedia(p){
+  return "<pre class='media-frame line' data-pane='"+p.id+"' style='line-height:1.2'>"+esc(MEDIA_FRAMES[p.app.frame%8])+"</pre>"+
+    "<div class='muted'>frame "+((p.app.frame%8)+1)+"/8 · "+PROFILES[state.profile].fps+" fps target · "+(p.app.playing?"playing":"paused")+"</div>"+
+    "<div class='kbd clickable' data-action='media-toggle' data-pane='"+p.id+"'>play/pause</div>";
+}
+function appLauncher(p){
+  let h="<div class='muted'>Select an app:</div>";
+  Object.entries(APPS).forEach(([n,label])=>h+="<div class='line clickable' data-action='launch' data-pane='"+p.id+"' data-name='"+n+"'>▸ "+esc(label)+"</div>");
+  return h;
+}
+
+//=============================================================================
+// Status hints
+//=============================================================================
+function hintFor(p){
+  if(!p)return"";
+  switch(p.kind){
+    case "unishell": return "UNISHELL · type a command · ↑↓ history";
+    case "parabash": return "Parabash · "+p.cwd+" · runs /bin/sh · ↑↓ history";
+    case "calculator": return "type an expression · Enter = evaluate";
+    case "calendar": return "[ ] change month · today";
+    case "activity": return "click items to cycle · chips to filter";
+    case "firewall": return "click rules to toggle";
+    case "settings": return "click a row to change it";
+    case "themes": return "click a theme to apply";
+    default: return APPS[p.kind]||p.title;
+  }
+}
+
+//=============================================================================
+// Render
+//=============================================================================
+function render(){
+  // tab strip
+  let tabs="";
+  state.panes.forEach(p=>{
+    const active=p.id===state.focusedId;
+    const cls="tab"+(p.kind==="unishell"?" unishell":"")+(active?" active":"")+(p.state==="hidden"?" hidden":"");
+    const label=p.kind==="unishell"?"UNISHELL v0.1.0":("["+p.id+"] "+p.title);
+    let inner="<span data-action='focus' data-id='"+p.id+"'>"+esc(label)+"</span>";
+    if(!p.persistent) inner+="<span class='x' data-action='close' data-id='"+p.id+"'>✕</span>";
+    tabs+="<div class='"+cls+"'>"+inner+"</div>";
+  });
+  $("#tabstrip").innerHTML=tabs;
+
+  // work area
+  const wa=$("#workarea");
+  wa.className="workarea "+(state.orientation==="v"?"v":"");
+  let vis=visible();
+  if(state.zoom){ const f=focused(); vis=f&&f.state==="visible"?[f]:vis.slice(0,1); }
+  let panesHtml="";
+  vis.forEach(p=>{
+    const focusedCls=p.id===state.focusedId?" focused":"";
+    let body, title=p.title;
+    if(p.kind==="unishell"||p.kind==="parabash"){
+      title=p.kind==="unishell"?"UNISHELL v0.1.0":(p.title+" — "+p.cwd);
+      body="";
+      p.scroll.forEach(l=>body+="<div class='line role-"+l.role+"'>"+esc(l.text||" ")+"</div>");
+      const sym=p.kind==="unishell"?"▸":"$";
+      body+="<div class='promptline'><span class='sym'>"+sym+"</span>"+
+        "<input data-role='shell-input' data-pane='"+p.id+"' autocomplete='off' spellcheck='false'></div>";
+    } else {
+      body=renderApp(p);
+    }
+    const ctl="<span class='ctl' data-action='hide' data-id='"+p.id+"'>—</span>"+
+      (p.persistent?"":"<span class='ctl' data-action='close' data-id='"+p.id+"'>✕</span>");
+    panesHtml+="<div class='pane"+focusedCls+"' style='flex-grow:"+p.weight+"' data-action='focus-pane' data-id='"+p.id+"'>"+
+      "<div class='pane-title'>"+esc(title)+" "+ctl+"</div>"+
+      "<div class='pane-body' data-pane='"+p.id+"'>"+body+"</div></div>";
+  });
+  wa.innerHTML=panesHtml;
+
+  // status bar
+  $("#status-left").textContent=hintFor(focused());
+  $("#status-fw").textContent=state.config.firewall_enabled?"🛡":"⚠";
+  $("#status-ctx").textContent=state.profile+"·"+state.theme;
+
+  // keep scrollbacks pinned to bottom + restore focus to the active input
+  document.querySelectorAll(".pane-body").forEach(b=>{ if(b.querySelector(".promptline")) b.scrollTop=b.scrollHeight; });
+  const fin=document.querySelector("input[data-role='shell-input'][data-pane='"+state.focusedId+"']");
+  if(fin){ fin.focus(); }
+}
+
+//=============================================================================
+// Event delegation
+//=============================================================================
+const screen=$("#screen");
+screen.addEventListener("click",e=>{
+  const t=e.target.closest("[data-action]"); if(!t)return;
+  const a=t.dataset.action, id=parseInt(t.dataset.id), pid=parseInt(t.dataset.pane);
+  switch(a){
+    case "focus": case "focus-pane": focusPane(id); break;
+    case "close": closePane(id); break;
+    case "hide": hidePane(id); break;
+    case "apply-theme": applyTheme(t.dataset.name); break;
+    case "launch": { const np=openApp(t.dataset.name); closePane(pid); if(np)focusPane(np.id); break; }
+    case "cal-prev": { const p=getPane(pid); p.app.cursor.setMonth(p.app.cursor.getMonth()-1); break; }
+    case "cal-next": { const p=getPane(pid); p.app.cursor.setMonth(p.app.cursor.getMonth()+1); break; }
+    case "cal-today": { const p=getPane(pid); p.app.cursor=new Date(today); break; }
+    case "act-filter": { getPane(pid).app.filter=t.dataset.f; break; }
+    case "act-cycle": { cycleAct(parseInt(t.dataset.id)); break; }
+    case "fw-toggle": { const r=state.firewall[parseInt(t.dataset.idx)]; r.enabled=!r.enabled; break; }
+    case "toggle-fw": state.config.firewall_enabled=!state.config.firewall_enabled; break;
+    case "toggle-clock": state.config.show_clock=!state.config.show_clock; tickClock(); break;
+    case "toggle-up": state.config.auto_update=!state.config.auto_update; break;
+    case "set-profile": cycleProfile(); break;
+    case "set-theme": cycleTheme(); break;
+    case "media-toggle": { const p=getPane(pid); p.app.playing=!p.app.playing; break; }
+    default: return;
+  }
+  render();
+});
+function cycleAct(id){ const i=state.activity.find(x=>x.id===id); if(!i)return;
+  const c=["open","active","done"]; i.status=c[(c.indexOf(i.status)+1)%3]; }
+function cycleProfile(){ const ks=Object.keys(PROFILES); setProfile(ks[(ks.indexOf(state.profile)+1)%ks.length]); }
+function cycleTheme(){ const ks=Object.keys(THEMES); applyTheme(ks[(ks.indexOf(state.theme)+1)%ks.length]); }
+
+screen.addEventListener("keydown",e=>{
+  const inp=e.target;
+  if(inp.dataset && inp.dataset.role==="shell-input"){
+    const p=getPane(parseInt(inp.dataset.pane)); if(!p)return;
+    if(e.key==="Enter"){ e.preventDefault(); const v=inp.value; inp.value="";
+      if(p.kind==="unishell") dispatch(p,v); else runParabash(p,v); render(); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); histNav(p,inp,-1); }
+    else if(e.key==="ArrowDown"){ e.preventDefault(); histNav(p,inp,1); }
+  } else if(inp.dataset && inp.dataset.role==="calc-input"){
+    const p=getPane(parseInt(inp.dataset.pane)); if(!p)return;
+    p.app.input=inp.value;
+    if(e.key==="Enter"){ e.preventDefault();
+      const expr=inp.value.trim(); if(!expr)return;
+      try{ p.app.history.push({expr,res:fmtNum(safeCalc(expr))}); p.app.err=null; p.app.input=""; }
+      catch(err){ p.app.err=err.message; }
+      render();
+    }
+  }
+});
+function histNav(p,inp,dir){
+  if(!p.history.length)return;
+  if(p.histIdx===null)p.histIdx=p.history.length;
+  p.histIdx+=dir;
+  if(p.histIdx>=p.history.length){p.histIdx=null;inp.value="";return;}
+  p.histIdx=Math.max(0,p.histIdx); inp.value=p.history[p.histIdx];
+}
+
+//=============================================================================
+// Clock + media animation
+//=============================================================================
+function tickClock(){ $("#clock").textContent=state.config.show_clock?new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):""; }
+setInterval(tickClock,1000);
+let mediaTick=0;
+setInterval(()=>{
+  mediaTick++;
+  const p=state.panes.find(x=>x.kind==="media"&&x.state==="visible");
+  if(!p||!p.app.playing)return;
+  const div=PROFILES[state.profile].fps>=10?2:(PROFILES[state.profile].fps>=4?4:8);
+  if(mediaTick%div!==0)return;
+  p.app.frame=(p.app.frame+1)%8;
+  const el=document.querySelector(".media-frame[data-pane='"+p.id+"']");
+  if(el) el.textContent=MEDIA_FRAMES[p.app.frame];
+},200);
+
+//=============================================================================
+// Boot
+//=============================================================================
+addUnishell();
+setProfile("desktop");
+tickClock();
+render();
+</script>
+</body>
+</html>

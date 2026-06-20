@@ -63,6 +63,22 @@ required (it renders into a text grid).
 
 ---
 
+## Browser preview
+
+[`index.html`](index.html) is a self-contained, interactive preview of the shell
+— open it directly in a browser (or serve it via GitHub Pages). It mirrors the
+real thing: the same 7 themes and 3 profiles, the single-layer pane model, and a
+working UNISHELL command line. Try `help`, `calc 42*17`, `theme apply matrix`,
+`profile set eink`, `parabash split right`, `activity new project "Ship v1"`.
+No build step and no dependencies — it's one HTML file.
+
+```sh
+xdg-open index.html        # or just double-click it
+python3 -m http.server     # then visit http://localhost:8000/
+```
+
+---
+
 ## Quick start
 
 Requirements: **Python 3.9+** and a terminal. No third-party packages for the
@@ -192,6 +208,7 @@ econsole/            the shell (stdlib only)
   apps/              all the app panes
 tests/               70 unittest tests (run headless)
 tools/snapshot.py    render the UI to text (docs/screenshots)
+index.html           self-contained interactive browser preview
 packaging/           systemd unit + session script for boot-to-shell
 docs/                ARCHITECTURE · ROADMAP · OS-IMAGE · SECURITY
 ```
