@@ -99,6 +99,38 @@ class CommandTest(TempEnvTestCase):
         result = self.run_cmd('activity new')
         self.assertFalse(result.ok)
 
+    def _unishell(self):
+        return self.app.manager.get(1)
+
+    def test_neofetch_prints_into_shell(self):
+        before = len(self._unishell().scroll)
+        result = self.run_cmd("neofetch")
+        self.assertTrue(result.ok)
+        self.assertGreater(len(self._unishell().scroll), before + 10)
+
+    def test_neofetch_config_opens_app(self):
+        self.run_cmd("neofetch config")
+        self.assertTrue(any(p.kind == "neofetch" for p in self.app.manager.panes))
+
+    def test_easter_eggs_emit_lines(self):
+        for line in ("sl", "cowsay hi", "fortune", "coffee", "xyzzy", "eggs", "sudo ls"):
+            before = len(self._unishell().scroll)
+            self.assertTrue(self.run_cmd(line).ok, line)
+            self.assertGreater(len(self._unishell().scroll), before, line)
+
+    def test_matrix_sets_theme(self):
+        self.run_cmd("matrix")
+        self.assertEqual(self.app.theme.name, "matrix")
+
+    def test_secret_rainbow_theme(self):
+        self.assertTrue(self.run_cmd("theme apply rainbow").ok)
+        self.assertEqual(self.app.theme.name, "rainbow")
+        # ...but it stays hidden from the public listing.
+        self.assertNotIn("rainbow", self.run_cmd("theme list").message)
+
+    def test_calc_answer_easter_egg(self):
+        self.assertIn("Answer", self.run_cmd("calc 6*7").message)
+
 
 if __name__ == "__main__":
     unittest.main()

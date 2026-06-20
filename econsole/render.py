@@ -50,7 +50,12 @@ class Surface:
 
     def text(self, row: int, col: int, s: str, role: str = "text", extra: int = 0,
              max_len: int | None = None) -> None:
-        """Draw ``s`` at pane-relative ``(row, col)``, clipped to the pane."""
+        """Draw ``s`` at pane-relative ``(row, col)`` in a theme role, clipped."""
+        self.raw(row, col, s, self.colors.attr(role) | extra, max_len)
+
+    def raw(self, row: int, col: int, s: str, attr: int = 0,
+            max_len: int | None = None) -> None:
+        """Draw ``s`` with a raw curses attribute (used for neofetch swatches)."""
         if s is None or row < 0 or row >= self.rect.h:
             return
         s = str(s).replace("\t", "    ")
@@ -67,9 +72,8 @@ class Surface:
             return
         y = self.rect.y + row
         x = self.rect.x + col
-        attribute = self.colors.attr(role) | extra
         try:
-            self.win.addnstr(y, x, s, len(s), attribute)
+            self.win.addnstr(y, x, s, len(s), attr)
         except curses.error:
             pass
 

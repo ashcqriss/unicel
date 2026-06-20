@@ -81,6 +81,11 @@ class Config(JsonStore):
         "show_clock": True,
         "firewall_enabled": True,
         "auto_update": True,
+        "neofetch": {
+            "logo": "auto",
+            "color_blocks": True,
+            "disabled_fields": ["packages"],
+        },
     }
 
     def __init__(self, path: Path | None = None):

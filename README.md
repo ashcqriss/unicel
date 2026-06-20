@@ -179,6 +179,27 @@ goals/projects) · Tasks · Notes · Settings · Theme Library · Hotkey Cheatsh
 User Manager (max 3) · Firewall Panel · File Manager · Browser (reader) · Image
 Viewer · Media Viewer (low-FPS frames).
 
+## neofetch & easter eggs
+
+`neofetch` (alias `fetch`) prints an E-Console logo beside your system info, and
+`neofetch config` opens an **adjustable** panel — cycle the logo, toggle the
+colour-block row, and turn individual fields on/off (saved to your config).
+
+There's a small set of discoverable eggs too — run `eggs` to list them: `sl`,
+`cowsay`, `fortune`, `coffee`/`tea` (HTTP 418), `xyzzy`, `sudo make me a
+sandwich`, `matrix`, a secret `rainbow` theme, a wink for `calc 6*7`, and the
+Konami code in the browser preview. Full details in
+**[docs/EASTER-EGGS.md](docs/EASTER-EGGS.md)**.
+
+```text
+  ┌──────────────┐   root@econsole
+  │ ▸ UNISHELL    │   ───────────────
+  │ $ _           │   OS:    Debian GNU/Linux 12
+  │               │   Shell: UNISHELL v0.1.0
+  │  E·CONSOLE OS │   Theme: econsole-dark   Profile: desktop
+  └──────────────┘   CPU/Mem/Uptime/…  ██▓▒░ colour blocks ░▒▓██
+```
+
 ## Themes & profiles
 
 - **Themes** (7): `econsole-dark`, `econsole-light`, `eink-dark`, `eink-light`,

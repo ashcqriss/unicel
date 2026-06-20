@@ -81,6 +81,8 @@ class Theme:
     error: str
     high_contrast: bool = False
     description: str = ""
+    #: Secret themes are appliable but hidden from `theme list` / Theme Library.
+    hidden: bool = False
 
     def role_pairs(self) -> dict[str, tuple[str, str]]:
         """Map each semantic role to a concrete ``(fg, bg)`` palette pair."""
@@ -207,13 +209,28 @@ _register(_theme(
 ))
 
 
+_register(_theme(
+    name="rainbow", label="Rainbow", profile_hint="desktop",
+    bg="black", fg="bright_white", dim="bright_blue",
+    accent="bright_magenta", accent2="bright_cyan",
+    border="bright_blue", border_focus="bright_yellow",
+    status_fg="black", status_bg="bright_magenta",
+    tab_fg="bright_cyan", tab_bg="black",
+    tab_active_fg="black", tab_active_bg="bright_yellow",
+    sel_fg="black", sel_bg="bright_green",
+    ok="bright_green", warn="bright_yellow", error="bright_red",
+    hidden=True,
+    description="🌈 secret festive theme — try 'theme apply rainbow'.",
+))
+
+
 def get_theme(name: str) -> Theme:
     """Return the named theme, falling back to the default dark theme."""
     return THEMES.get(name, THEMES["econsole-dark"])
 
 
-def list_themes() -> list[Theme]:
-    return list(THEMES.values())
+def list_themes(include_hidden: bool = False) -> list[Theme]:
+    return [t for t in THEMES.values() if include_hidden or not t.hidden]
 
 
 class ColorManager:
@@ -225,11 +242,16 @@ class ColorManager:
     colour support.
     """
 
+    #: Ad-hoc colour pairs (neofetch swatches) live above the role pairs.
+    _COLOR_PAIR_BASE = 40
+
     def __init__(self) -> None:
         self._curses = None
         self._has_color = False
         self._attrs: dict[str, int] = {}
         self._next_pair = 1
+        self._color_cache: dict[tuple[int, int], int] = {}
+        self._color_next = self._COLOR_PAIR_BASE
 
     def start(self) -> None:
         import curses  # local import keeps the module headless-importable
@@ -250,6 +272,8 @@ class ColorManager:
         curses = self._curses
         self._attrs = {}
         self._next_pair = 1
+        self._color_cache = {}
+        self._color_next = self._COLOR_PAIR_BASE
         if curses is None:
             return
 
@@ -285,3 +309,29 @@ class ColorManager:
     def attr(self, role: str) -> int:
         """Return the curses attribute for a role (0 when headless)."""
         return self._attrs.get(role, 0)
+
+    def color_attr(self, fg_index: int, bg_index: int = -1, bold: bool = False) -> int:
+        """Return an attribute for a raw ANSI colour pair (e.g. neofetch swatches).
+
+        Allocates and caches a colour pair on demand above the role-pair range.
+        Falls back to bold/reverse video when the terminal has no colour.
+        """
+        curses = self._curses
+        if curses is None:
+            return 0
+        if not self._has_color:
+            return curses.A_REVERSE
+        key = (fg_index, bg_index)
+        if key not in self._color_cache:
+            max_pairs = getattr(curses, "COLOR_PAIRS", 64) or 64
+            attr = curses.A_NORMAL
+            if self._color_next < max_pairs:
+                try:
+                    curses.init_pair(self._color_next, fg_index, bg_index)
+                    attr = curses.color_pair(self._color_next)
+                    self._color_next += 1
+                except curses.error:
+                    attr = curses.A_NORMAL
+            self._color_cache[key] = attr
+        attr = self._color_cache[key]
+        return attr | curses.A_BOLD if bold else attr

@@ -20,7 +20,8 @@ from econsole.theme import THEMES
 from ._tmpenv import TempEnvTestCase
 
 NAV_KEYS = [curses.KEY_DOWN, curses.KEY_UP, ord("j"), ord("k"), ord(" "),
-            curses.KEY_NPAGE, curses.KEY_PPAGE, curses.KEY_LEFT, curses.KEY_RIGHT]
+            curses.KEY_NPAGE, curses.KEY_PPAGE, curses.KEY_LEFT, curses.KEY_RIGHT,
+            ord("o")]  # 'o' toggles the neofetch config view
 
 
 class StubWindow:

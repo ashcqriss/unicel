@@ -73,6 +73,23 @@ class EConsoleApp:
     def run_command(self, line: str) -> CommandResult:
         return self.registry.dispatch(self, line)
 
+    def shell_print(self, lines) -> None:
+        """Print coloured ``(text, role)`` lines into the active shell pane.
+
+        Used by neofetch and the easter eggs, which need multi-colour output
+        that a single-role :class:`CommandResult` can't carry.
+        """
+        pane = self.manager.focused()
+        if not hasattr(pane, "print"):
+            pane = self.manager.get(1)  # fall back to UNISHELL
+        if pane is None or not hasattr(pane, "print"):
+            return
+        for item in lines:
+            if isinstance(item, (tuple, list)):
+                pane.print(item[0], item[1] if len(item) > 1 else "text")
+            else:
+                pane.print(item, "text")
+
     def run_system(self, line: str) -> tuple[int, str]:
         line = line.strip()
         # Handle ``cd`` in-process so the shell's directory actually changes.

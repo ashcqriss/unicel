@@ -11,6 +11,8 @@ from __future__ import annotations
 import datetime as _dt
 from typing import Any
 
+from .. import easter
+from .. import neofetch as neofetch_mod
 from .. import profile as profile_mod
 from .. import theme as theme_mod
 from ..calc import CalcError, evaluate, format_result
@@ -147,9 +149,68 @@ def _cmd_calc(ctx: Any, args: list[str]) -> CommandResult:
         ctx.open_app("calculator")
         return CommandResult.info("opened Calculator")
     try:
-        return CommandResult.info(f"{expression} = {format_result(evaluate(expression))}")
+        value = evaluate(expression)
+        message = f"{expression} = {format_result(value)}"
+        flavor = easter.calc_flavor(value)
+        if flavor:
+            message += f"\n  {flavor}"
+        return CommandResult.info(message)
     except CalcError as exc:
         return CommandResult.error(str(exc))
+
+
+# --- neofetch & easter eggs ------------------------------------------------
+def _cmd_neofetch(ctx: Any, args: list[str]) -> CommandResult:
+    if args and args[0] in ("config", "adjust", "-c", "--config", "-i"):
+        ctx.open_app("neofetch")
+        return CommandResult.info("opened neofetch config (press 'o' to toggle)")
+    cfg = neofetch_mod.config_for(ctx)
+    if "--no-colors" in args or "--no-color" in args:
+        cfg["color_blocks"] = False
+    if "--logo" in args:
+        i = args.index("--logo")
+        if i + 1 < len(args):
+            cfg["logo"] = args[i + 1]
+    ctx.shell_print(neofetch_mod.render_text(ctx, cfg))
+    return CommandResult.info("")
+
+
+def _egg(ctx: Any, lines) -> CommandResult:
+    ctx.shell_print(lines)
+    return CommandResult.info("")
+
+
+def _cmd_eggs(ctx: Any, args: list[str]) -> CommandResult:
+    return _egg(ctx, easter.eggs_list())
+
+
+def _cmd_sl(ctx: Any, args: list[str]) -> CommandResult:
+    return _egg(ctx, easter.train())
+
+
+def _cmd_cowsay(ctx: Any, args: list[str]) -> CommandResult:
+    return _egg(ctx, easter.cowsay(" ".join(args)))
+
+
+def _cmd_fortune(ctx: Any, args: list[str]) -> CommandResult:
+    return _egg(ctx, easter.fortune())
+
+
+def _cmd_teapot(ctx: Any, args: list[str]) -> CommandResult:
+    return _egg(ctx, easter.teapot())
+
+
+def _cmd_xyzzy(ctx: Any, args: list[str]) -> CommandResult:
+    return _egg(ctx, easter.xyzzy())
+
+
+def _cmd_sudo(ctx: Any, args: list[str]) -> CommandResult:
+    return _egg(ctx, easter.sudo(args))
+
+
+def _cmd_matrix(ctx: Any, args: list[str]) -> CommandResult:
+    ctx.set_theme("matrix")
+    return _egg(ctx, easter.matrix())
 
 
 def _cmd_calendar(ctx: Any, args: list[str]) -> CommandResult:
@@ -408,3 +469,15 @@ def register_builtins(registry: CommandRegistry) -> None:
     add("firewall", "Firewall panel/status", _cmd_firewall, "firewall [status|enable|disable]",
         aliases=("fw",), category="system")
     add("users", "User manager", _cmd_users, "users [add <name>|list]", category="system")
+    add("neofetch", "System info + logo", _cmd_neofetch,
+        "neofetch [config|--logo N|--no-colors]", aliases=("fetch",), category="system")
+
+    # Easter eggs (discoverable on purpose — see 'eggs').
+    add("eggs", "List the easter eggs", _cmd_eggs, "eggs", aliases=("eastereggs",), category="fun")
+    add("sl", "🚂 choo choo", _cmd_sl, "sl", category="fun")
+    add("cowsay", "An ASCII cow speaks", _cmd_cowsay, "cowsay <text>", category="fun")
+    add("fortune", "A random fortune", _cmd_fortune, "fortune", category="fun")
+    add("coffee", "Brew something", _cmd_teapot, "coffee", aliases=("tea", "brew"), category="fun")
+    add("xyzzy", "A hollow voice says…", _cmd_xyzzy, "xyzzy", category="fun")
+    add("sudo", "Elevated theatrics", _cmd_sudo, "sudo <cmd>", category="fun")
+    add("matrix", "Wake up, Neo", _cmd_matrix, "matrix", category="fun")

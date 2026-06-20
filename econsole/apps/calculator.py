@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .. import easter
 from ..calc import CalcError, evaluate, format_result
 from ..widgets import InputField, truncate
 from .base import AppPane
@@ -18,6 +19,7 @@ class CalculatorApp(AppPane):
         self.field = InputField(expression, prompt="› ")
         self.history: list[tuple[str, str]] = []
         self.message = ""
+        self.flavor = ""
 
     def status_hint(self) -> str:
         return "type expression · Enter=evaluate · Ctrl-U=clear"
@@ -40,12 +42,14 @@ class CalculatorApp(AppPane):
         if not text:
             return
         try:
-            result = format_result(evaluate(text))
-            self.history.append((text, result))
+            value = evaluate(text)
+            self.history.append((text, format_result(value)))
             self.message = ""
+            self.flavor = easter.calc_flavor(value) or ""
             self.field.clear()
         except CalcError as exc:
             self.message = f"error: {exc}"
+            self.flavor = ""
 
     def render_body(self, surface, focused: bool) -> None:
         surface.text(0, 0, "Expression", role="dim")
@@ -53,6 +57,8 @@ class CalculatorApp(AppPane):
         surface.hline(2)
         if self.message:
             surface.text(3, 0, truncate(self.message, surface.width), role="error")
+        elif self.flavor:
+            surface.text(3, 0, truncate(self.flavor, surface.width), role="accent2")
 
         start_row = 4
         capacity = surface.height - start_row

@@ -19,6 +19,7 @@ from .filemanager import FileManagerApp
 from .firewall import FirewallApp
 from .imagepane import ImageApp
 from .media import MediaApp
+from .neofetch import NeofetchApp
 from .notes import NotesApp
 from .settings import SettingsApp
 from .tasks import TasksApp
@@ -92,5 +93,7 @@ register(AppInfo("image", "Image Viewer", ImageApp, ("img",),
                  "Inline image renderer (ASCII / half-block)."))
 register(AppInfo("media", "Media Viewer", MediaApp, ("video",),
                  "Low-FPS frame-based video/animation output."))
+register(AppInfo("neofetch", "neofetch", NeofetchApp, ("fetch",),
+                 "System info + E-Console logo (configurable)."))
 
 __all__ = ["AppPane", "AppInfo", "APPS", "register", "resolve", "create"]

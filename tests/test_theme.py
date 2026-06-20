@@ -25,6 +25,13 @@ class ThemeTest(unittest.TestCase):
     def test_get_theme_fallback(self):
         self.assertEqual(get_theme("does-not-exist").name, "econsole-dark")
 
+    def test_secret_theme_hidden_but_appliable(self):
+        # rainbow exists and resolves, but is excluded from the public list.
+        self.assertIn("rainbow", THEMES)
+        self.assertEqual(get_theme("rainbow").name, "rainbow")
+        self.assertNotIn("rainbow", [t.name for t in list_themes()])
+        self.assertIn("rainbow", [t.name for t in list_themes(include_hidden=True)])
+
 
 class ProfileTest(unittest.TestCase):
     def test_profiles_present(self):

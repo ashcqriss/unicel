@@ -234,6 +234,11 @@ const THEMES = {
     border:"yellow",border_focus:"bright_yellow",status_fg:"black",status_bg:"bright_yellow",
     tab_fg:"yellow",tab_bg:"black",tab_active_fg:"black",tab_active_bg:"bright_yellow",
     sel_fg:"black",sel_bg:"bright_yellow",ok:"bright_green",warn:"bright_yellow",error:"bright_red"}),
+  "rainbow": T({label:"Rainbow", hint:"desktop", hidden:true, desc:"🌈 secret festive theme.",
+    bg:"black",fg:"bright_white",dim:"bright_blue",accent:"bright_magenta",accent2:"bright_cyan",
+    border:"bright_blue",border_focus:"bright_yellow",status_fg:"black",status_bg:"bright_magenta",
+    tab_fg:"bright_cyan",tab_bg:"black",tab_active_fg:"black",tab_active_bg:"bright_yellow",
+    sel_fg:"black",sel_bg:"bright_green",ok:"bright_green",warn:"bright_yellow",error:"bright_red"}),
 };
 const PROFILES = {
   desktop:{label:"Desktop", theme:"econsole-dark", fps:24, desc:"Full keyboard/mouse, larger panes."},
@@ -249,10 +254,13 @@ const APPS = {
   tasks:"Tasks", notes:"Notes", settings:"Settings", themes:"Theme Library",
   cheatsheet:"Hotkey Cheatsheet", users:"User Manager", firewall:"Firewall Panel",
   files:"File Manager", browser:"Browser", image:"Image Viewer", media:"Media Viewer",
+  neofetch:"neofetch",
 };
 const APP_ALIASES = {cal:"calendar", calc:"calculator", act:"activity", task:"tasks",
   todo:"tasks", note:"notes", config:"settings", keys:"cheatsheet", user:"users",
-  fw:"firewall", fm:"files", lf:"files", img:"image", video:"media", web:"browser"};
+  fw:"firewall", fm:"files", lf:"files", img:"image", video:"media", web:"browser",
+  fetch:"neofetch"};
+const BOOT_TIME = Date.now();
 
 const today = new Date();
 const iso = d => d.toISOString().slice(0,10);
@@ -340,6 +348,7 @@ function openApp(name,opts={}){
   if(name==="calendar") p.app={cursor:new Date(today)};
   if(name==="activity") p.app={filter:"all"};
   if(name==="media") p.app={frame:0,playing:true};
+  if(name==="neofetch") p.app={view:"fetch",cfg:{logo:"auto",color_blocks:true,disabled:["packages"]}};
   if(name==="browser") p.app={url:opts.url||"", };
   if(name==="image") p.app={path:opts.path||""};
   if(name==="files") p.app={path:"~"};
@@ -421,7 +430,7 @@ function resolveCmd(n){ const c=CMDS[n]; return c?(c.alias?CMDS[c.alias]:c):null
 
 reg("help","List available commands",(p,a)=>{
   const cats={}; Object.values(CMDS).forEach(c=>{if(c.alias)return;(cats[c.cat]=cats[c.cat]||[]).push(c);});
-  const order=["general","panes","apps","system"];
+  const order=["general","panes","apps","system","fun"];
   log(p,"E-Console OS — UNISHELL v0.1.0","accent"); log(p,"");
   order.forEach(cat=>{ if(!cats[cat])return; log(p,cat.toUpperCase(),"accent2");
     cats[cat].sort((x,y)=>x.name.localeCompare(y.name)).forEach(c=>log(p,"  "+c.usage.padEnd(26)+" "+c.summary));
@@ -465,7 +474,8 @@ reg("zoom","Toggle full-screen pane",(p)=>{state.zoom=!state.zoom;return ok("zoo
 
 reg("calc","Evaluate an expression",(p,a)=>{
   if(!a.length){openApp("calculator");return ok("opened Calculator");}
-  try{return ok(a.join(" ")+" = "+fmtNum(safeCalc(a.join(" "))));}catch(e){return err(e.message);}
+  try{ const v=safeCalc(a.join(" ")); let m=a.join(" ")+" = "+fmtNum(v); const f=calcFlavor(v); if(f)m+="\n  "+f; return ok(m); }
+  catch(e){return err(e.message);}
 },"calc <expr>","apps");
 reg("calendar","Calendar / today",(p,a)=>{
   if(a[0]==="today"){
@@ -512,7 +522,7 @@ reg("app","Open a named app",(p,a)=>{ if(!a.length){openLauncher();return ok("op
 reg("settings","Open settings",(p)=>{openApp("settings");return ok("opened Settings");},"settings","system",["config"]);
 reg("theme","Theme list/apply",(p,a)=>{
   if(!a.length){openApp("themes");return ok("opened Theme Library");}
-  if(a[0]==="list"){let out="themes:"; Object.entries(THEMES).forEach(([n,t])=>out+="\n  "+(n===state.theme?"*":" ")+" "+n.padEnd(16)+" "+t.desc); return info(p,out);}
+  if(a[0]==="list"){let out="themes:"; Object.entries(THEMES).forEach(([n,t])=>{if(t.hidden)return; out+="\n  "+(n===state.theme?"*":" ")+" "+n.padEnd(16)+" "+t.desc;}); return info(p,out);}
   if(a[0]==="current")return ok("current theme: "+state.theme);
   const name=a[0]==="apply"?a[1]:a[0];
   return applyTheme(name)?ok("applied theme: "+name):err("unknown theme: "+name);
@@ -537,6 +547,21 @@ reg("users","User manager",(p,a)=>{
     state.users.push({id:++state.userSeq,name,avatar:name[0].toUpperCase(),theme:null}); openApp("users"); return ok("added user: "+name);}
   openApp("users"); return ok("opened User Manager");
 },"users [add <name>|list]","system");
+
+reg("neofetch","System info + logo",(p,a)=>{
+  if(a[0]==="config"||a[0]==="-i"||a[0]==="adjust"){openApp("neofetch");return ok("opened neofetch — click 'configure'");}
+  const cfg={logo:"auto",color_blocks:!(a.includes("--no-colors")||a.includes("--no-color")),disabled:["packages"]};
+  const li=a.indexOf("--logo"); if(li>=0&&a[li+1])cfg.logo=a[li+1];
+  return eggOut(p,neoLines(p,cfg));
+},"neofetch [config|--logo N]","system",["fetch"]);
+reg("eggs","List the easter eggs",(p)=>eggOut(p,eEggs()),"eggs","fun",["eastereggs"]);
+reg("sl","choo choo",(p)=>eggOut(p,eTrain()),"sl","fun");
+reg("cowsay","An ASCII cow speaks",(p,a)=>eggOut(p,eCow(a.join(" "))),"cowsay <text>","fun");
+reg("fortune","A random fortune",(p)=>eggOut(p,eFortune()),"fortune","fun");
+reg("coffee","Brew something",(p)=>eggOut(p,eTeapot()),"coffee","fun",["tea","brew"]);
+reg("xyzzy","A hollow voice says…",(p)=>eggOut(p,eXyzzy()),"xyzzy","fun");
+reg("sudo","Elevated theatrics",(p,a)=>eggOut(p,eSudo(a)),"sudo <cmd>","fun");
+reg("matrix","Wake up, Neo",(p)=>eggOut(p,eMatrix()),"matrix","fun");
 
 function ok(msg){ return {role:"ok",msg}; }
 function err(msg){ return {role:"error",msg}; }
@@ -589,6 +614,7 @@ function renderApp(p){
     case "browser": return appBrowser(p);
     case "image": return appImage(p);
     case "media": return appMedia(p);
+    case "neofetch": return appNeofetch(p);
     case "launcher": return appLauncher(p);
   }
   return "<div class='muted'>"+esc(p.kind)+"</div>";
@@ -601,6 +627,7 @@ function appCalculator(p){
   (p.app.history||[]).slice(-12).reverse().forEach((e,i)=>{
     h+="<div class='line "+(i===0?"role-text":"role-dim")+"'>"+esc(e.expr)+" = "+esc(e.res)+"</div>";
   });
+  if(p.app.flavor && !p.app.err) h="<div class='line role-accent2'>"+esc(p.app.flavor)+"</div>"+h;
   if(p.app.err) h="<div class='line role-error'>error: "+esc(p.app.err)+"</div>"+h;
   return h;
 }
@@ -685,6 +712,7 @@ function appSettings(p){
 }
 function appThemes(p){
   let h=""; Object.entries(THEMES).forEach(([n,t])=>{
+    if(t.hidden)return;
     const cur=n===state.theme;
     h+="<div class='line clickable' data-action='apply-theme' data-pane='"+p.id+"' data-name='"+n+"'>"+
       (cur?"● ":"  ")+"<span class='swatch' style='background:"+hex(t.bg)+"'></span> "+
@@ -768,6 +796,127 @@ function appMedia(p){
     "<div class='muted'>frame "+((p.app.frame%8)+1)+"/8 · "+PROFILES[state.profile].fps+" fps target · "+(p.app.playing?"playing":"paused")+"</div>"+
     "<div class='kbd clickable' data-action='media-toggle' data-pane='"+p.id+"'>play/pause</div>";
 }
+//--- neofetch ----------------------------------------------------------------
+const NEO_LOGOS={
+  econsole:["  ┌──────────────┐","  │ ▸ UNISHELL    │","  │ $ _           │","  │               │","  │  E·CONSOLE OS │","  └──────────────┘"],
+  ascii:["  +--------------+","  | > UNISHELL   |","  | $ _          |","  |  E-CONSOLE   |","  +--------------+"],
+  blocks:["  ███████ ","  ██      ","  █████   ","  ██      ","  ███████ ","  E-CONSOLE"],
+  pi:["   .~~.   .~~.","  '. \\/ \\/ .'","   .~ .~~. ~.","  : .~.''.~. :","  ~ (    ) ~","   ( '~~' )","    '~~~~'"],
+};
+const NEO_LOGO_CHOICES=["auto","econsole","ascii","blocks","pi"];
+const NEO_FIELDS=[["os","OS"],["host","Host"],["kernel","Kernel"],["uptime","Uptime"],
+  ["shell","Shell"],["resolution","Resolution"],["profile","Profile"],["theme","Theme"],
+  ["panes","Panes"],["apps","Apps"],["commands","Commands"],["packages","Packages"],
+  ["cpu","CPU"],["memory","Memory"],["python","Python"],["firewall","Firewall"]];
+function neoPick(cfg){ let n=cfg.logo; if(n==="auto") n=(THEMES[state.theme]&&THEMES[state.theme].hint==="eink")?"ascii":"econsole"; return NEO_LOGOS[n]||NEO_LOGOS.econsole; }
+function neoTitle(){ return (state.config.current_user||"user")+"@"+((location.hostname||"econsole-web").split(":")[0]); }
+function neoUptime(){ const s=Math.floor((Date.now()-BOOT_TIME)/1000); const m=Math.floor(s/60)%60,h=Math.floor(s/3600); return (h?h+"h ":"")+m+"m "+(s%60)+"s"; }
+function neoVal(k){ switch(k){
+  case "os": return (navigator.userAgentData&&navigator.userAgentData.platform)||navigator.platform||"Web";
+  case "host": return (location.hostname||"econsole-web").split(":")[0];
+  case "kernel": return "preview";
+  case "uptime": return neoUptime();
+  case "shell": return "UNISHELL v0.1.0";
+  case "resolution": return window.innerWidth+"x"+window.innerHeight;
+  case "profile": return state.profile;
+  case "theme": return state.theme;
+  case "panes": return String(state.panes.length);
+  case "apps": return String(Object.keys(APPS).length);
+  case "commands": return String(Object.values(CMDS).filter(c=>!c.alias).length);
+  case "packages": return "n/a (web)";
+  case "cpu": return (navigator.hardwareConcurrency||"?")+" cores";
+  case "memory": return navigator.deviceMemory?navigator.deviceMemory+" GB":"n/a";
+  case "python": return "n/a (browser preview)";
+  case "firewall": return state.config.firewall_enabled?"on":"off";
+} return "n/a"; }
+function neoGather(cfg){ return NEO_FIELDS.filter(([k])=>!cfg.disabled.includes(k)).map(([k,l])=>[l,neoVal(k)]); }
+function neoLines(p,cfg){ // for printing into the shell
+  const lines=[]; neoPick(cfg).forEach(r=>lines.push([r,"accent"])); lines.push(["","text"]);
+  const t=neoTitle(); lines.push([t,"accent"]); lines.push(["─".repeat(t.length),"dim"]);
+  neoGather(cfg).forEach(([l,v])=>lines.push([l+": "+v,"text"]));
+  if(cfg.color_blocks){ lines.push(["","text"]); lines.push(["███▓▓▒▒░░  ░░▒▒▓▓███","accent2"]); }
+  return lines;
+}
+function appNeofetch(p){
+  const cfg=p.app.cfg;
+  if(p.app.view==="config"){
+    let h="<div class='muted'>Adjust neofetch — applies live · <span class='kbd clickable' data-action='neo-view' data-pane='"+p.id+"'>preview</span></div>";
+    h+="<div class='line clickable' data-action='neo-logo' data-pane='"+p.id+"'>Logo: ‹ "+esc(cfg.logo)+" ›</div>";
+    h+="<div class='line clickable' data-action='neo-blocks' data-pane='"+p.id+"'>Colour blocks: "+(cfg.color_blocks?"on":"off")+"</div>";
+    NEO_FIELDS.forEach(([k,label])=>{ const on=!cfg.disabled.includes(k);
+      h+="<div class='line clickable' data-action='neo-field' data-pane='"+p.id+"' data-k='"+k+"'>"+(on?"[x]":"[ ]")+" "+esc(label)+"</div>"; });
+    h+="<div class='kbd clickable' data-action='neo-reset' data-pane='"+p.id+"'>reset</div>";
+    return h;
+  }
+  const logo=neoPick(cfg), info=neoGather(cfg), t=neoTitle();
+  let h="<div class='row' style='align-items:flex-start;gap:18px'>";
+  h+="<pre class='line role-accent' style='margin:0;line-height:1.15'>"+esc(logo.join("\n"))+"</pre>";
+  h+="<div style='min-width:0'><div class='role-accent'>"+esc(t)+"</div><div class='muted'>"+"─".repeat(t.length)+"</div>";
+  info.forEach(([l,v])=>h+="<div class='line'><span class='role-accent'>"+esc(l)+":</span> "+esc(v)+"</div>");
+  h+="</div></div>";
+  if(cfg.color_blocks){
+    const base=["black","red","green","yellow","blue","magenta","cyan","white"];
+    const bright=["gray","bright_red","bright_green","bright_yellow","bright_blue","bright_magenta","bright_cyan","bright_white"];
+    const blk=a=>a.map(n=>"<span style='display:inline-block;width:18px;height:11px;background:"+hex(n)+"'></span>").join("");
+    h+="<div style='margin-top:8px'>"+blk(base)+"</div><div>"+blk(bright)+"</div>";
+  }
+  h+="<div class='muted' style='margin-top:8px'><span class='kbd clickable' data-action='neo-view' data-pane='"+p.id+"'>configure</span></div>";
+  return h;
+}
+
+//--- easter eggs -------------------------------------------------------------
+function eTrain(){ return [
+ ["      ====        ________                ___________","warn"],
+ ["  _D _|  |_______/        \\__I_I_____===__|_________|","warn"],
+ ["   |(_)---  |   H\\________/ |   |        =|___ ___|  ","warn"],
+ ["   /     |  |   H  |  |     |   |         ||_| |_||  ","warn"],
+ ["  |      |  |   H  |__--------------------| [___] |  ","warn"],
+ ["  | ________|___H__/__|_____/[][]~\\_______|       |  ","warn"],
+ ["  |/ |   |-----------I_____I [][] []  D   |=======|__","warn"],
+ ["__/ =| o |=-~~\\  /~~\\  /~~\\  /~~\\ ____Y___________|__","warn"],
+ [" |/-=|___|=   O=====O=====O=====O|_____/~\\___/      ","warn"],
+ ["  \\_/      \\__/  \\__/  \\__/  \\__/      \\_/           ","warn"],
+ ["","text"],["🚂  you typed `sl` — did you mean `ls`?  choo choo!","dim"]]; }
+function eCow(text){ text=(text||"E-Console says moo!").trim(); const W=38;
+  const words=text.split(" "); const ws=[]; let line="";
+  words.forEach(w=>{ if((line+" "+w).trim().length<=W) line=(line+" "+w).trim(); else {ws.push(line);line=w;} }); if(line)ws.push(line);
+  const width=Math.max(...ws.map(l=>l.length));
+  const out=[[" "+"_".repeat(width+2),"accent2"]];
+  if(ws.length===1) out.push(["< "+ws[0]+" >","accent2"]);
+  else ws.forEach((w,i)=>{ const L=i===0?"/":(i===ws.length-1?"\\":"|"),R=i===0?"\\":(i===ws.length-1?"/":"|"); out.push([L+" "+w.padEnd(width)+" "+R,"accent2"]); });
+  out.push([" "+"-".repeat(width+2),"accent2"]);
+  out.push(["        \\   ^__^","text"],["         \\  (oo)\\_______","text"],
+    ["            (__)\\       )\\/\\","text"],["                ||----w |","text"],["                ||     ||","text"]);
+  return out; }
+const FORTUNES=["The best UI is the one already on screen.","A pane in the hand is worth two in the stack.",
+ "E-Ink: where pixels think before they move.","rm -rf your doubts.","UNISHELL remembers. UNISHELL is patient.",
+ "Keyboard-first, because your mouse hand needs the coffee.","A watched progress bar never completes.",
+ "When in doubt, split the pane.","Low power, high focus.","The terminal is mightier than the GUI."];
+function eFortune(){ return [["🔮 "+FORTUNES[Math.floor(Math.random()*FORTUNES.length)],"text"]]; }
+function eTeapot(){ return [["            ;,'","accent"],["    _o_    ;:;'","accent"],[" ,-.'---`.__ ;","accent"],
+ ["((j`=====',-'","accent"],[" `-\\     /","accent"],["    `-=-'","accent"],["","text"],
+ ["HTTP 418 — I'm a teapot. ☕ Short and stout.","warn"]]; }
+function eXyzzy(){ return [["Nothing happens.","dim"]]; }
+const SUDO_DENY=["This incident will be reported. 🚨","Nice try.","You shall not pass. 🧙","With great power comes great responsibility — request denied."];
+function eSudo(args){ const j=args.join(" ").trim().toLowerCase();
+  if(j==="make me a sandwich") return [["Okay.","ok"]];
+  if(!j) return [["usage: sudo <command>  (spoiler: it won't help here)","dim"]];
+  return [[SUDO_DENY[Math.floor(Math.random()*SUDO_DENY.length)],"error"]]; }
+function eMatrix(){ applyTheme("matrix"); return [["Wake up, Neo…","ok"],["The Matrix has you…","ok"],
+ ["Follow the white rabbit. 🐇","ok"],["","text"],["(theme → matrix)","dim"]]; }
+const EGGS=[["neofetch / fetch","System info + E-Console logo (configurable: 'neofetch config')"],
+ ["sl","A steam locomotive when you fat-finger 'ls'"],["cowsay <text>","An ASCII cow says your text"],
+ ["fortune","A random terminal fortune"],["coffee / tea","HTTP 418 — I'm a teapot"],
+ ["xyzzy","A nod to Colossal Cave Adventure"],["sudo <cmd>","Permission theatrics (try the sandwich)"],
+ ["matrix","Wake up, Neo… + green theme"],["theme apply rainbow","Unlocks the secret 🌈 theme"],
+ ["calc 6*7","Some numbers have opinions"],["Konami code","↑ ↑ ↓ ↓ ← → ← → B A"]];
+function eEggs(){ const out=[["🥚 E-Console easter eggs:","accent"],["","text"]];
+  EGGS.forEach(([t,d])=>out.push(["  "+t.padEnd(22)+" "+d,"text"]));
+  out.push(["","text"],["…and a couple I'm not telling you about. 😉","dim"]); return out; }
+function calcFlavor(v){ if(v===42)return "✨ the Answer to Life, the Universe, and Everything";
+  if(v===1337)return "😎 l33t"; if(v===69)return "nice."; return null; }
+function eggOut(p,lines){ lines.forEach(l=>log(p,l[0],l[1])); return null; }
+
 function appLauncher(p){
   let h="<div class='muted'>Select an app:</div>";
   Object.entries(APPS).forEach(([n,label])=>h+="<div class='line clickable' data-action='launch' data-pane='"+p.id+"' data-name='"+n+"'>▸ "+esc(label)+"</div>");
@@ -871,6 +1020,11 @@ screen.addEventListener("click",e=>{
     case "set-profile": cycleProfile(); break;
     case "set-theme": cycleTheme(); break;
     case "media-toggle": { const p=getPane(pid); p.app.playing=!p.app.playing; break; }
+    case "neo-view": { const p=getPane(pid); p.app.view=p.app.view==="config"?"fetch":"config"; break; }
+    case "neo-logo": { const c=getPane(pid).app.cfg; c.logo=NEO_LOGO_CHOICES[(NEO_LOGO_CHOICES.indexOf(c.logo)+1)%NEO_LOGO_CHOICES.length]; break; }
+    case "neo-blocks": { const c=getPane(pid).app.cfg; c.color_blocks=!c.color_blocks; break; }
+    case "neo-field": { const c=getPane(pid).app.cfg, k=t.dataset.k, i=c.disabled.indexOf(k); if(i>=0)c.disabled.splice(i,1); else c.disabled.push(k); break; }
+    case "neo-reset": { getPane(pid).app.cfg={logo:"auto",color_blocks:true,disabled:["packages"]}; break; }
     default: return;
   }
   render();
@@ -893,7 +1047,7 @@ screen.addEventListener("keydown",e=>{
     p.app.input=inp.value;
     if(e.key==="Enter"){ e.preventDefault();
       const expr=inp.value.trim(); if(!expr)return;
-      try{ p.app.history.push({expr,res:fmtNum(safeCalc(expr))}); p.app.err=null; p.app.input=""; }
+      try{ const v=safeCalc(expr); p.app.history.push({expr,res:fmtNum(v)}); p.app.err=null; p.app.flavor=calcFlavor(v)||""; p.app.input=""; }
       catch(err){ p.app.err=err.message; }
       render();
     }
@@ -923,6 +1077,29 @@ setInterval(()=>{
   const el=document.querySelector(".media-frame[data-pane='"+p.id+"']");
   if(el) el.textContent=MEDIA_FRAMES[p.app.frame];
 },200);
+
+//=============================================================================
+// Konami code easter egg: ↑ ↑ ↓ ↓ ← → ← → B A  → unlocks the rainbow theme
+//=============================================================================
+const KONAMI=["ArrowUp","ArrowUp","ArrowDown","ArrowDown","ArrowLeft","ArrowRight","ArrowLeft","ArrowRight","b","a"];
+let konamiPos=0;
+document.addEventListener("keydown",e=>{
+  if(e.key.toLowerCase()===KONAMI[konamiPos].toLowerCase()){
+    konamiPos++;
+    if(konamiPos===KONAMI.length){ konamiPos=0; konamiUnlock(); }
+  } else {
+    konamiPos = (e.key===KONAMI[0]) ? 1 : 0;
+  }
+});
+function konamiUnlock(){
+  applyTheme("rainbow");
+  const toast=document.createElement("div");
+  toast.textContent="🌈  KONAMI!  rainbow theme unlocked";
+  toast.style.cssText="position:fixed;left:50%;top:24px;transform:translateX(-50%);background:#111;color:#fff;border:1px solid var(--accent);border-radius:10px;padding:10px 18px;font:600 14px var(--mono);z-index:9999;box-shadow:0 12px 36px rgba(0,0,0,.6)";
+  document.body.appendChild(toast);
+  render();
+  setTimeout(()=>toast.remove(),3200);
+}
 
 //=============================================================================
 // Boot
